@@ -1,7 +1,7 @@
 PATH
   remote: ../machine_learning_workbench
   specs:
-    machine_learning_workbench (0)
+    machine_learning_workbench (0.1.1.pre.5.pre.g8cb4ecb)
       nmatrix-atlas (~> 0.2)
 
 GEM
@@ -20,6 +20,7 @@ GEM
       nmatrix (= 0.2.4)
     packable (1.3.9)
       backports
+    parallel (1.12.1)
     pry (0.10.4)
       coderay (~> 1.1.0)
       method_source (~> 0.8.1)
@@ -32,6 +33,7 @@ GEM
     pry-stack_explorer (0.4.9.2)
       binding_of_caller (>= 0.7)
       pry (>= 0.9.11)
+    pycall (1.0.3)
     slop (3.6.0)
 
 PLATFORMS
@@ -39,9 +41,11 @@ PLATFORMS
 
 DEPENDENCIES
   machine_learning_workbench!
+  parallel
   pry-nav
   pry-rescue
   pry-stack_explorer
+  pycall
 
 BUNDLED WITH
    1.16.1

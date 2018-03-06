@@ -8,9 +8,10 @@ source "https://rubygems.org"
 # gem 'ffi'
 # gem 'nmatrix-atlas'
 # gem 'rmagick'
-# gem 'parallel'
 
 gem 'machine_learning_workbench', path: '../machine_learning_workbench'
+gem 'pycall'
+gem 'parallel'
 
 gem 'pry-nav'
 gem 'pry-rescue'
