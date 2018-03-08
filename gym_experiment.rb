@@ -38,8 +38,14 @@ class GymExperiment
   # @param type [String] the type of environment as understood by OpenAI Gym
   # @return an initialized environment
   def init_env type:
-    pyimport :gym       # adds the OpenAI Gym environment
+    begin
+      pyimport :gym        # adds the OpenAI Gym environment
+      pyimport :gym_gvgai  # adds the GVGAI environment from NYU
+    rescue PyCall::PyError => err
+      puts "Error importing python environment: #{err.message}"
+    end
     puts "  initializing env" if debug
+
     gym.make(type).tap do |gym_env|
       # Collect info about the observation space
       obs = gym_env.reset.tolist.to_a
