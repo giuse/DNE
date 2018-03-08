@@ -78,7 +78,7 @@ class GymExperiment
   # @param type [Symbol] name the NES algorithm of choice
   # @return an initialized NES instance
   def init_opt type:
-    ndims = case type
+    dims = case type
     when :BDNES
       net.nweights_per_layer
     when :SNES, :XNES
@@ -86,7 +86,7 @@ class GymExperiment
     else
       raise NotImplementedError, "Make sure to add `#{type}` to the accepted ES"
     end
-    NES.const_get(type).new ndims, method(:fitness_all), :max, parallel_fit: true, rseed: random_seed
+    NES.const_get(type).new dims, method(:fitness_all), :max, parallel_fit: true, rseed: random_seed
   end
 
   # Return an action for an observation

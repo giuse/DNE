@@ -4,13 +4,16 @@ This project collects a set of neuroevolution experiments with/towards deep netw
 
 ## Installation
 
+First make sure the OpenAI Gym is pip-installed, [instructions here](https://github.com/openai/gym).  
+You will also need the [GVGAI_GYM](https://github.com/rubenrtorrado/GVGAI_GYM) to access GVGAI environments.
+
 Clone this repository, then execute:
 
-    $ bundle
+    $ bundle install
 
 ## Usage
 
-    ruby experiments/cartpole.rb
+    bundle exec ruby experiments/cartpole.rb
 
 ## Contributing
 
