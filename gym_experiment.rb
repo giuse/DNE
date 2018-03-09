@@ -1,6 +1,7 @@
-require 'machine_learning_workbench'  # https://github.com/giuse/machine_learning_workbench/
-require 'pycall/import'               # https://github.com/mrkn/pycall.rb/
-require 'parallel'                    # https://github.com/grosser/parallel
+require 'machine_learning_workbench'    # https://github.com/giuse/machine_learning_workbench/
+require 'parallel'                      # https://github.com/grosser/parallel
+ENV["PYTHON"] = `which python3`.strip   # set python3 path for PyCall
+require 'pycall/import'                 # https://github.com/mrkn/pycall.rb/
 
 # Shorthands
 WB = MachineLearningWorkbench
@@ -12,7 +13,7 @@ class GymExperiment
   include PyCall::Import
 
   attr_reader :config, :single_env, :net, :opt, :parall_envs, :max_nsteps, :max_ngens,
-    :termination_criteria, :random_seed, :debug
+    :termination_criteria, :random_seed, :debug, :fit_fn
 
   def initialize config
     @config = config
@@ -22,6 +23,9 @@ class GymExperiment
     @termination_criteria = config[:run][:termination_criteria]
     @random_seed = config[:run][:random_seed]
     @debug = config[:run][:debug]
+    @fit_fn = gen_fit_fn config[:run][:fitness_type]
+    puts "Loading OpenAI Gym through PyCall" if debug
+    init_gym
     puts "Initializing single env" if debug
     @single_env = init_env config[:env] # one put aside for easy access
     puts "Initializing network" if debug
@@ -29,8 +33,26 @@ class GymExperiment
     puts "Initializing optimizer" if debug
     @opt = init_opt config[:opt]
     puts "Initializing parallel environments" if debug
-    @parall_envs = opt.popsize.times.map { init_env config[:env] } # these for fitness computation
+    unless config[:run][:fitness_type] == :sequential_single
+      # these for parallel fitness computation
+      @parall_envs = opt.popsize.times.map { init_env config[:env] }
+    end
     puts "Initialization complete" if debug
+  end
+
+  # Import the OpenAI Gym through PyCall
+  def init_gym
+    begin
+      pyimport :gym        # adds the OpenAI Gym environment
+    rescue PyCall::PythonNotFound => err
+      raise "\n\nThis project requires Python 3.\n" \
+            "You can edit the path in the `ENV['PYTHON']` " \
+            "variable on top of the file.\n\n"
+    rescue PyCall::PyError => err
+      raise "\n\nPlease install the OpenAI Gym from https://github.com/openai/gym\n" \
+            "  $ git clone git@github.com:openai/gym.git openai_gym\n" \
+            "  $ pip3 install --user -e openai_gym\n\n"
+    end
   end
 
   # Initializes the environment
@@ -38,14 +60,18 @@ class GymExperiment
   # @param type [String] the type of environment as understood by OpenAI Gym
   # @return an initialized environment
   def init_env type:
-    begin
-      pyimport :gym        # adds the OpenAI Gym environment
-      pyimport :gym_gvgai  # adds the GVGAI environment from NYU
-    rescue PyCall::PyError => err
-      puts "Error importing python environment: #{err.message}"
-    end
     puts "  initializing env" if debug
 
+    if type.match /gvgai/ # GVGAI Gym environment from NYU
+      begin  # can't wait for Ruby 2.5 to simplify this to if/rescue/end
+        puts "Loading GVGAI environment" if debug
+        pyimport :gym_gvgai
+      rescue PyCall::PyError => err
+        raise "\n\nTo run GVGAI environments you need to install the Gym env:\n" \
+              "  $ git clone git@github.com:rubenrtorrado/GVGAI_GYM.git gym-gvgai\n" \
+              "  $ pip3 install --user -e gym-gvgai/gvgai-gym/\n\n"
+      end
+    end
     gym.make(type).tap do |gym_env|
       # Collect info about the observation space
       obs = gym_env.reset.tolist.to_a
@@ -86,7 +112,7 @@ class GymExperiment
     else
       raise NotImplementedError, "Make sure to add `#{type}` to the accepted ES"
     end
-    NES.const_get(type).new dims, method(:fitness_all), :max, parallel_fit: true, rseed: random_seed
+    NES.const_get(type).new dims, fit_fn, :max, parallel_fit: true, rseed: random_seed
   end
 
   # Return an action for an observation
@@ -98,29 +124,48 @@ class GymExperiment
     #   unless single_env.act_type == :discrete
     # We're checking this at gym_env creation, that's enough :)
 
-
     input = observation.tolist.to_a
-    # TODO: should normalize here
+    # TODO: probably a function generator here would be notably more efficient
+    # TODO: the normalization range depends on the net's activation function
     output = net.activate input
-    # TODO: Sometimes the output is NaN...? Find out what's going on, then get rid of begin/rescue
-    begin
+    begin # Why do I get NaN output sometimes?
       action = output.index output.max
     rescue ArgumentError, Parallel::UndumpableException
+      puts "\n\nNaN NETWORK OUTPUT!"
       output.map! { |out| out = -Float::INFINITY if out.nan? }
       action = output.index output.max
     end
   end
 
-  # Return a list of fitnesses for a list of genotypes
-  # @param genotypes [Array<gtype>] list of genotypes
-  # @return [Array<Numeric>] list of fitnesses for each genotype
-  def fitness_all genotypes
-    ## SEQUENTIAL ON SINGLE ENVIRONMENT     => useful to catch problems with parallel env spawning
-    # genotypes.map &method(:fitness_one)
-    ## SEQUENTIAL ON MULTIPLE ENVIRONMENTS  => `Parallel` can make debugging hard
-    # genotypes.zip(parall_envs).map { |genotype, env| fitness_one genotype, env: env }
-    ## PARALLEL ON MULTIPLE ENVIRONMENTS    => should do that if you can
-    Parallel.map(genotypes.zip(parall_envs)) { |genotype, env| fitness_one genotype, env: env }
+  # Builds a function that return a list of fitnesses for a list of genotypes.
+  # @param type the type of computation
+  # @return [lambda] function that evaluates the fitness of a list of genotype
+  # @note returned function has param genotypes [Array<gtype>] list of genotypes, return [Array<Numeric>] list of fitnesses for each genotype
+  def gen_fit_fn type
+    type ||= :parallel
+    case type
+    # SEQUENTIAL ON SINGLE ENVIRONMENT
+    # => useful to catch problems with parallel env spawning
+    when :sequential_single
+      -> (genotypes) { genotypes.map &method(:fitness_one) }
+    # SEQUENTIAL ON MULTIPLE ENVIRONMENTS
+    # => `Parallel` can make debugging hard, this switches it off
+    when :sequential_multi
+      -> (genotypes) do
+        genotypes.zip(parall_envs).map do |genotype, env|
+          fitness_one genotype, env: env
+        end
+      end
+    # PARALLEL ON MULTIPLE ENVIRONMENTS
+    # => because why not
+    when :parallel
+      -> (genotypes) do
+        Parallel.map(genotypes.zip(parall_envs)) do |genotype, env|
+          fitness_one genotype, env: env
+        end
+      end
+    else raise ArgumentError, "Unrecognized fit type: `#{type}`"
+    end
   end
 
   # Return the fitness of a single genotype

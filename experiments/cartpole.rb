@@ -12,7 +12,8 @@ config = {
   run: {
     max_nsteps: 550,
     max_ngens: 5,
-    random_seed: 1
+    random_seed: 1,
+    fitness_type: :sequential_single,
   },
   opt: {
     type: :BDNES
