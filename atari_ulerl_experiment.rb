@@ -1,5 +1,5 @@
 require_relative 'gym_experiment'
-require_relative 'compressor'
+require_relative 'observation_compressor'
 
 module DNE
   # Specialized GymExperiment class for Atari environments and UL-ERL.
@@ -12,21 +12,19 @@ module DNE
       # - net.struct => compr.ncentrs
       # super before compr
       # - config[:run][:debug]
-      # - centr_size => env.resize_obs
-      @resize = config[:env][:resize_obs] # hack
-      puts "Initializing compressor"
+      puts "Initializing compressor" # if debug
       @compr = init_compr config.delete :compr
-      puts "Loading Atari OpenAI Gym environment"
+      puts "Loading Atari OpenAI Gym environment" # if debug
       super config
     end
 
     # Initializes the UL compressor
     def init_compr **compr_opts
-      centr_size = 210*160
-      centr_size /= resize.reduce(:*) if resize
-      DNE::Compressor.new **compr_opts.merge({
-        dims: centr_size, dtype: :float64, vrange: [0,1]
-      })
+      defaults = {
+        dtype: :float64, vrange: [0,1],
+        orig_size: [210,160] # ALE image size
+      }
+      DNE::ObservationCompressor.new **defaults.merge(compr_opts)
     end
 
     # Initializes the Atari environment
@@ -97,26 +95,12 @@ module DNE
       tot_reward
     end
 
-    # Manipulate an observation towards the form which works best for the compressor
-    # TODO: normalization range depends on `act_fn` slope!!
-    def normalize observation
-      # resize to lower resolution
-      if (v_divisor, h_divisor = single_env.resize_obs)
-        resized_obs = observation[(0..-1).step(v_divisor), (0..-1).step(h_divisor)]
-      else
-        resized_obs = observation
-      end
-      # avg channels, flatten, normalize
-      (resized_obs.mean(2).ravel / 255).tolist.to_a.to_nm(nil, :float64)
-    end
-
-
     # Return an action for an image observation
     # @note this includes the non-banal sequence of converting the observation to network inputs, activating the network, then interpreting the network output as the corresponding action
     # @param image [numpy array] screenshot from the Atari emulator
     def action_for observation
       # encode with the compressor
-      input, novelty = compr.encode normalize observation
+      input, novelty = compr.encode observation
 
       # TODO: probably a function generator here would be notably more efficient
       # TODO: the normalization range depends on the net's activation function

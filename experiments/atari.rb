@@ -7,8 +7,7 @@ config = {
     activation_function: :logistic
   },
   env: {
-    type: 'Qbert-v0',
-    resize_obs: [30,20] #[3, 2] # v_divisor, h_divisor
+    type: 'Qbert-v0'
   },
   run: {
     max_nsteps: 100,
@@ -26,7 +25,8 @@ config = {
     type: :VectorQuantization,
     encoding: :ensemble_norm, # [:most_similar, :ensemble, :ensemble_norm]
     ncentrs: 8,
-    lrate: 0.3 # actual number or `:vlr` for the variable learning rate
+    lrate: 0.3, # actual number or `:vlr` for the variable learning rate
+    downsample: [30,20] #[3, 2] # [vertical divisor, horizontal divisor]
   }
 }
 exp = DNE::AtariUlerlExperiment.new config
