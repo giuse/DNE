@@ -4,7 +4,8 @@ source "https://rubygems.org"
 
 # git_source(:github) {|repo_name| "https://github.com/#{repo_name}" }
 
-gem 'machine_learning_workbench', path: '../machine_learning_workbench'
+gem 'machine_learning_workbench', '>=0.1.2'
+
 gem 'pycall'
 gem 'parallel'
 

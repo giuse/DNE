@@ -1,9 +1,3 @@
-PATH
-  remote: ../machine_learning_workbench
-  specs:
-    machine_learning_workbench (0.1.1.pre.5.pre.g8cb4ecb)
-      nmatrix-atlas (~> 0.2)
-
 GEM
   remote: https://rubygems.org/
   specs:
@@ -13,6 +7,8 @@ GEM
     coderay (1.1.2)
     debug_inspector (0.0.3)
     interception (0.5)
+    machine_learning_workbench (0.1.2)
+      nmatrix-atlas (~> 0.2)
     method_source (0.8.2)
     nmatrix (0.2.4)
       packable (~> 1.3, >= 1.3.5)
@@ -40,7 +36,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  machine_learning_workbench!
+  machine_learning_workbench (>= 0.1.2)
   parallel
   pry-nav
   pry-rescue
