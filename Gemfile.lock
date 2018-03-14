@@ -7,8 +7,9 @@ GEM
     coderay (1.1.2)
     debug_inspector (0.0.3)
     interception (0.5)
-    machine_learning_workbench (0.1.2)
+    machine_learning_workbench (0.2.1)
       nmatrix-atlas (~> 0.2)
+      parallel (~> 1.12)
     method_source (0.8.2)
     nmatrix (0.2.4)
       packable (~> 1.3, >= 1.3.5)
@@ -36,7 +37,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  machine_learning_workbench (>= 0.1.2)
+  machine_learning_workbench (>= 0.2.1)
   parallel
   pry-nav
   pry-rescue

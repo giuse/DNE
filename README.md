@@ -29,5 +29,6 @@ Please feel free to contribute to this list (see `Contributing` above).
 
 - **UL-ELR** stands for Unsupervised Learning plus Evolutionary Reinforcement Learning, from the paper _"Intrinsically Motivated Neuroevolution for Vision-Based Reinforcement Learning" (ICDL2011)_. Check [here](https://exascale.info/members/giuseppe-cuccu/) for citation reference and pdf.
 - **BD-NES** stands for Block Diagonal Natural Evolution Strategies, from the homonymous paper _"Block Diagonal Natural Evolution Strategies" (PPSN2012)_. Check [here](https://exascale.info/members/giuseppe-cuccu/) for citation reference and pdf.
+- **Online VQ** stands for Online Vector Quantization, from the paper _"Intrinsically Motivated Neuroevolution for Vision-Based Reinforcement Learning" (ICDL2011)_. Check [here](https://exascale.info/members/giuseppe-cuccu/) for citation reference and pdf.
 - The **OpenAI Gym** is described [here](https://gym.openai.com/) and available on [this repo](https://github.com/openai/gym/)
 - **PyCall.rb** is available on [this repo](https://github.com/mrkn/pycall.rb/).
