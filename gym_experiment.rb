@@ -116,10 +116,10 @@ module DNE
     # @return an initialized NES instance
     def init_opt type:
       dims = case type
+      when :XNES, :SNES, :RNES, :FNES
+        net.nweights
       when :BDNES
         net.nweights_per_layer
-      when :SNES, :XNES
-        net.nweights
       else
         raise NotImplementedError, "Make sure to add `#{type}` to the accepted ES"
       end
@@ -131,7 +131,7 @@ module DNE
     #   activating the network, then interpreting the network output as the corresponding action
     def action_for observation
       # TODO: continuous actions
-      # raise NotImplementedError "Only 'Discrete' action types at the moment please" \
+      # raise NotImplementedError, "Only 'Discrete' action types at the moment please" \
       #   unless single_env.act_type == :discrete
       # We're checking this at gym_env creation, that's enough :)
 
