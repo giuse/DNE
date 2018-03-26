@@ -14,6 +14,7 @@ config = {
     max_ngens: 5,
     random_seed: 1,
     fitness_type: :sequential_single,
+    # debug: true
   },
   opt: {
     type: :BDNES

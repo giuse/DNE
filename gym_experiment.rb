@@ -1,7 +1,24 @@
-require 'machine_learning_workbench'    # https://github.com/giuse/machine_learning_workbench/
 require 'parallel'                      # https://github.com/grosser/parallel
 ENV["PYTHON"] = `which python3`.strip   # set python3 path for PyCall
 require 'pycall/import'                 # https://github.com/mrkn/pycall.rb/
+# IMPORTANT: `require 'numo/narray`' should come AFTER the first `pyimport :gym`
+# Don't ask me why, don't know, don't care. Check `gym_test.rb` to try it out.
+begin
+  puts "Loading OpenAI Gym through PyCall"
+  include PyCall::Import
+  pyimport :gym        # adds the OpenAI Gym environment
+rescue PyCall::PythonNotFound => err
+  raise "\n\nThis project requires Python 3.\n" \
+        "You can edit the path in the `ENV['PYTHON']` " \
+        "variable on top of the file.\n\n"
+rescue PyCall::PyError => err
+  raise "\n\nPlease install the OpenAI Gym from https://github.com/openai/gym\n" \
+        "  $ git clone git@github.com:openai/gym.git openai_gym\n" \
+        "  $ pip3 install --user -e openai_gym\n\n"
+end
+# IMPORTANT: `require 'numo/narray`' should come `AFTER PyCall::Import.pyimport :gym`
+require 'machine_learning_workbench'    # https://github.com/giuse/machine_learning_workbench/
+
 
 # Deep Neuroevolution
 module DNE
@@ -31,8 +48,7 @@ module DNE
         real_fit = @fit_fn
         @fit_fn = -> (ind) { puts "pre_fit"; real_fit.call(ind).tap { puts "post_fit" } }
       end
-      puts "Loading OpenAI Gym through PyCall" if debug
-      init_gym
+      pyimport :gym        # adds the OpenAI Gym environment to this class
       puts "Initializing single env" if debug
       @single_env = init_env config[:env] # one put aside for easy access
       puts "Initializing network" if debug
@@ -49,19 +65,18 @@ module DNE
       puts "=> Initialization complete" if debug
     end
 
-    # Import the OpenAI Gym through PyCall
-    def init_gym
-      begin
-        pyimport :gym        # adds the OpenAI Gym environment
-      rescue PyCall::PythonNotFound => err
-        raise "\n\nThis project requires Python 3.\n" \
-              "You can edit the path in the `ENV['PYTHON']` " \
-              "variable on top of the file.\n\n"
-      rescue PyCall::PyError => err
-        raise "\n\nPlease install the OpenAI Gym from https://github.com/openai/gym\n" \
-              "  $ git clone git@github.com:openai/gym.git openai_gym\n" \
-              "  $ pip3 install --user -e openai_gym\n\n"
+    # Debugging utility.
+    # Visually inspect if the environment is properly initialized.
+    def test_env env=nil, nsteps=100
+      env ||= gym.make('CartPole-v1')
+      env.reset
+      env.render
+      nsteps.times do |i|
+        act = env.action_space.sample
+        env.step(act)
+        env.render
       end
+      env.reset
     end
 
     # Initializes the environment
@@ -72,31 +87,32 @@ module DNE
       # TODO: make a wrapper around the observation to avoid switch-when
       puts "  initializing env" if debug
 
-      if type.match /gvgai/ # GVGAI Gym environment from NYU
-        begin  # can't wait for Ruby 2.5 to simplify this to if/rescue/end
-          puts "Loading GVGAI environment" if debug
-          pyimport :gym_gvgai
-        rescue PyCall::PyError => err
-          raise "\n\nTo run GVGAI environments you need to install the Gym env:\n" \
-                "  $ git clone git@github.com:rubenrtorrado/GVGAI_GYM.git gym-gvgai\n" \
-                "  $ pip3 install --user -e gym-gvgai/gvgai-gym/\n\n"
-        end
-      end
-      gym.make(type).tap do |gym_env|
+      # if type.match /gvgai/ # GVGAI Gym environment from NYU
+      #   begin  # can't wait for Ruby 2.5 to simplify this to if/rescue/end
+      #     puts "Loading GVGAI environment" if debug
+      #     pyimport :gym_gvgai
+      #   rescue PyCall::PyError => err
+      #     raise "\n\nTo run GVGAI environments you need to install the Gym env:\n" \
+      #           "  $ git clone git@github.com:rubenrtorrado/GVGAI_GYM.git gym-gvgai\n" \
+      #           "  $ pip3 install --user -e gym-gvgai/gvgai-gym/\n\n"
+      #   end
+      # end
+
+      gym.make(type).tap do |env|
         # Collect info about the observation space
-        obs = gym_env.reset.tolist.to_a
+        obs = env.reset.tolist.to_a
         raise "Unrecognized observation space" if obs.nil? || obs.empty?
-        gym_env.define_singleton_method(:obs_size) { obs.size }
+        env.define_singleton_method(:obs_size) { obs.size }
 
         # Collect info about the action space
-        act_type, act_size = gym_env.action_space.to_s.match(/(.*)\((\d*)\)/).captures
+        act_type, act_size = env.action_space.to_s.match(/(.*)\((\d*)\)/).captures
         raise "Unrecognized action space" if act_type.nil? || act_size.nil?
-        gym_env.define_singleton_method(:act_type) { act_type.downcase.to_sym }
-        gym_env.define_singleton_method(:act_size) { Integer(act_size) }
+        env.define_singleton_method(:act_type) { act_type.downcase.to_sym }
+        env.define_singleton_method(:act_size) { Integer(act_size) }
         # TODO: continuous actions
         raise NotImplementedError, "Only 'Discrete' action types at the moment please" \
-          unless gym_env.act_type == :discrete
-        puts "Space sizes: obs => #{gym_env.obs_size}, act => #{gym_env.act_size}" if debug
+          unless env.act_type == :discrete
+        puts "Space sizes: obs => #{env.obs_size}, act => #{env.act_size}" if debug
       end
     end
 
@@ -134,13 +150,12 @@ module DNE
       # raise NotImplementedError, "Only 'Discrete' action types at the moment please" \
       #   unless single_env.act_type == :discrete
       # We're checking this at gym_env creation, that's enough :)
-
       input = observation.tolist.to_a
       # TODO: probably a function generator here would be notably more efficient
       # TODO: the normalization range depends on the net's activation function
       output = net.activate input
       begin # Why do I get NaN output sometimes?
-        action = output.index output.max
+        action = output.max_index
       rescue ArgumentError, Parallel::UndumpableException
         puts "\n\nNaN NETWORK OUTPUT!"
         output.map! { |out| out = -Float::INFINITY if out.nan? }
@@ -220,7 +235,7 @@ module DNE
         print "Gen #{i+1}: "
         opt.train
         puts "Best fit so far: #{opt.best.first} -- " \
-             "Avg fit: #{opt.last_fits.reduce(:+)/opt.last_fits.size} -- " \
+             "Avg fit: #{opt.last_fits.mean} -- " \
              "Conv: #{opt.convergence}"
 
         break if termination_criteria&.call(opt)
