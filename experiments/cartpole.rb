@@ -13,7 +13,7 @@ config = {
     max_nsteps: 550,
     max_ngens: 5,
     random_seed: 1,
-    fitness_type: :sequential_single,
+    fitness_type: :parallel
     # debug: true
   },
   opt: {

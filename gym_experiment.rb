@@ -180,16 +180,16 @@ module DNE
         -> (genotypes) do
           genotypes.zip(parall_envs).map do |genotype, env|
             fitness_one genotype, env: env
-          end
+          end.to_na
         end
       # PARALLEL ON MULTIPLE ENVIRONMENTS
       # => because why not
       when :parallel
         -> (genotypes) do
           # TODO: initialize only as many parall_envs as Parallel workers
-          Parallel.map(genotypes.zip(parall_envs)) do |genotype, env|
-            fitness_one genotype, env: env
-          end
+          Parallel.map(0...genotypes.shape.first) do |i|
+            fitness_one genotypes[i,true], env: parall_envs[i]
+          end.to_na
         end
       else raise ArgumentError, "Unrecognized fit type: `#{type}`"
       end
