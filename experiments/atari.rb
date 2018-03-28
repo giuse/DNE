@@ -10,8 +10,8 @@ config = {
     type: 'Qbert-v0'
   },
   run: {
-    max_nsteps: 100,
-    max_ngens: 10,
+    max_nsteps: 200,
+    max_ngens: 5,
     # fitness_type: :sequential_single,
     fitness_type: :parallel, # [:sequential_single, :sequential_multi, :parallel]
     # random_seed: 1,
@@ -19,19 +19,27 @@ config = {
     debug: true
   },
   opt: {
-    type: :BDNES
+    type: :RNES
   },
   compr: {
+    # type: :OnlineVectorQuantization,
     type: :VectorQuantization,
     encoding: :ensemble_norm, # [:most_similar, :ensemble, :ensemble_norm]
-    ncentrs: 8,
-    lrate: 0.3, # actual number or `:vlr` for the variable learning rate
-    downsample: [30,20] #[3, 2] # [vertical divisor, horizontal divisor]
+    ncentrs: 50,
+    lrate: 0.7,
+    downsample: [3,2] #[3, 2] # [vertical divisor, horizontal divisor]
   }
 }
 exp = DNE::AtariUlerlExperiment.new config
-exp.run
-print "Re-running best individual "
-exp.show_best until_end: true
 
-require 'pry'; binding.pry
+# require 'memory_profiler'
+# report = MemoryProfiler.report { exp.run }
+# report.pretty_print
+
+exp.run
+
+print "Re-running best individual "
+# exp.show_best until_end: true
+exp.compr.show_centroids
+
+# require 'pry'; binding.pry

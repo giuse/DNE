@@ -21,7 +21,7 @@ module DNE
     # Initializes the UL compressor
     def init_compr **compr_opts
       defaults = {
-        dtype: :float64, vrange: [0,1],
+        vrange: [0,1],
         orig_size: [210,160] # ALE image size
       }
       DNE::ObservationCompressor.new **defaults.merge(compr_opts)
@@ -90,9 +90,30 @@ module DNE
         env.render if render
         break if done
       end
-      compr.train_set << compr_train.last
+      compr.train_set << compr_train.first
       puts "=> Done, fitness: #{tot_reward}" if debug
       tot_reward
+    end
+
+    # Builds a function that return a list of fitnesses for a list of genotypes.
+    # Since Parallel runs in separate fork, this overload is needed to fetch out
+    # the training set before returning the fitness to the optimizer
+    # @param type the type of computation
+    # @return [lambda] function that evaluates the fitness of a list of genotype
+    # @note returned function has param genotypes [Array<gtype>] list of genotypes, return [Array<Numeric>] list of fitnesses for each genotype
+    def gen_fit_fn type
+      if type.nil? || type == :parallel
+        -> (genotypes) do
+          fits, trains = Parallel.map(0...genotypes.shape.first) do |i|
+            fit = fitness_one genotypes[i,true], env: parall_envs[i]
+            [fit, compr.train_set]
+          end.transpose
+          compr.train_set = trains.flatten
+          fits.to_na
+        end
+      else
+        super
+      end
     end
 
     # Return an action for an image observation
@@ -100,22 +121,37 @@ module DNE
     # @param image [numpy array] screenshot from the Atari emulator
     def action_for observation
       # encode with the compressor
-      input, novelty = compr.encode observation
+      input, norm_obs, novelty = compr.encode observation
 
       # TODO: probably a function generator here would be notably more efficient
       # TODO: the normalization range depends on the net's activation function
       output = net.activate input
       begin # Why do I get NaN output sometimes?
-        action = output.index output.max
+        action = output.max_index
       rescue ArgumentError, Parallel::UndumpableException
         puts "\n\nNaN NETWORK OUTPUT!"
         output.map! { |out| out = -Float::INFINITY if out.nan? }
         action = output.index output.max
       end
-      [action, input, novelty] # hack: method should just return action
+      # hack: method should just return action
+      [action, norm_obs, novelty]
     end
-  end
 
+    # Run the experiment
+    def run ngens: max_ngens
+      ngens.times do |i|
+        print "Gen #{i+1}: "
+        opt.train
+        puts "Best fit so far: #{opt.best.first} -- " \
+             "Avg fit: #{opt.last_fits.mean} -- " \
+             "Conv: #{opt.convergence}"
+        break if termination_criteria&.call(opt)
+        puts "Training compressor" if debug
+        compr.train
+      end
+    end
+
+  end
 end
 
 puts "USAGE: `bundle exec ruby experiments/atari/<expname>.rb`" if __FILE__ == $0
