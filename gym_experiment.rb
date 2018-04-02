@@ -32,7 +32,7 @@ module DNE
     include PyCall::Import
 
     attr_reader :config, :single_env, :net, :opt, :parall_envs, :max_nsteps, :max_ngens,
-      :termination_criteria, :random_seed, :debug, :repeat_action, :fit_fn
+      :termination_criteria, :random_seed, :debug, :skip_frames, :skip_type, :fit_fn
 
     def initialize config
       @config = config
@@ -42,7 +42,8 @@ module DNE
       @termination_criteria = config[:run][:termination_criteria]
       @random_seed = config[:run][:random_seed]
       @debug = config[:run][:debug]
-      @repeat_action = (config[:run][:skip_frames] || 0) + 1
+      @skip_frames = (config[:run][:skip_frames] || 0) + 1
+      @skip_type = config[:run][:skip_type] || :noop
       @fit_fn = gen_fit_fn config[:run][:fitness_type]
       if debug
         real_fit = @fit_fn
@@ -195,6 +196,11 @@ module DNE
       end
     end
 
+    SKIP_TYPE = {
+      noop: -> (act) { env.step(0) },
+      repeat: -> (act) { env.step(act) }
+    }
+
     # Return the fitness of a single genotype
     # @param genotype the individual to be evaluated
     # @param env the environment to use for the evaluation
@@ -209,12 +215,13 @@ module DNE
       tot_reward = 0
       puts "  Running (max_nsteps: #{max_nsteps})" if debug
       nsteps.times do |i|
+        # TODO: refactor based on `atari_ulerl`
         selected_action, normobs, novelty = action_for observation
         # observation, reward, done, info = env.step(selected_action).to_a
         # skip_frames&.times { env.step 0 } # accelerate simulation
 
-        observations, rewards, dones, infos = repeat_action.times.map do
-          env.step(selected_action).to_a
+        observations, rewards, dones, infos = skip_frames.times.map do
+          SKIP_TYPE[skip_type].call(selected_action).to_a
         end.transpose
         # NOTE: this blurs the observation. An alternative is to isolate what changes.
         observation = observations.reduce(:+) / observations.size

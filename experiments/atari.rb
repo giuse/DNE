@@ -15,7 +15,8 @@ config = {
     # fitness_type: :sequential_single,
     fitness_type: :parallel, # [:sequential_single, :sequential_multi, :parallel]
     # random_seed: 1,
-    skip_frames: 5,
+    skip_frames: 50, #5,
+    skip_type: :noop,
     debug: true
   },
   opt: {
