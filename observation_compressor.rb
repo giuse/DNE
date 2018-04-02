@@ -10,50 +10,58 @@ module DNE
     extend Forwardable
     def_delegators :@compr, :ncentrs, :centrs, :ntrains
 
-    attr_reader :encoding, :downsample, :downsampled_size, :compr, :train_set
+    attr_reader :encoding, :downsample, :downsampled_size, :compr, :train_set, :obs_range
     attr_writer :train_set
 
-    def initialize type:, encoding:, orig_size:, downsample: nil, **compr_args
+    def initialize type:, encoding:, orig_size:, obs_range:, downsample: nil, **compr_args
+      @obs_range = obs_range
       @encoding = encoding
-      @downsample = downsample || [1] * orig_size.size
-      raise ArgumentError, "Only downward scaling" if @downsample.any? { |v| v < 1 }
-      @downsampled_size = orig_size.zip(@downsample).map { |s,r| s/r }.reverse
+      @downsample = downsample
+      raise ArgumentError, "Only downward scaling" if downsample.any? { |v| v < 1 }
+      @downsampled_size = orig_size.zip(downsample).map { |s,r| s/r }
       centr_size = downsampled_size.reduce(:*)
       compr_class = begin
         WB::Compressor.const_get(type)
       rescue NameError => err
         raise ArgumentError, "Unrecognized compressor type `#{type}`"
       end
+
       @compr = compr_class.new **compr_args.merge({dims: centr_size})
       @train_set = []
     end
 
-    # Massage an observation into a form suitable for the WB compressor
-    # TODO: normalization range depends on `act_fn` slope!!
-    # TODO: this should be heavily optimized, doing everything in Python would be
-    #   oh-so-much quicker :(
-    # @param observation [python ndarray] the observation as coming from the
-    #   environmnet through PyCall
-    # @return [NArray] the observation in a form ready for processing with the WB
-    def normalize observation
-      # resample to target resolution
-      v_divisor, h_divisor = downsample
-      resized = observation[(0..-1).step(v_divisor), (0..-1).step(h_divisor)]
-      # avg channels, flatten, normalize => pylist => Array => NArray
-      (resized.mean(2).ravel / 255).tolist.to_a.to_na
+    # Reset the centroids to something else than random noise
+    # TODO: refactor
+    def reset_centrs img, proport: nil
+      img = normalize img if img.kind_of? NImage
+      compr.init_centrs base: img, proport: proport
     end
 
-    # Provide encoding (+ novelty) for a raw observation
-    # @param observation [python ndarray] the observation as coming from the
-    #   environmnet through PyCall
-    # @return [Array<Array<Float>, NArray,  Float>] the encoded observation,
-    #   followed by its normalized version and corresponding novelty
-    def encode raw_obs
-      obs = normalize raw_obs
-      code = compr.encode(obs, type: encoding)
-      # novelty as reconstruction error
-      novelty = (obs - compr.reconstruction(code, type: encoding)).abs.sum
-      [code, obs, novelty]
+    # Normalize an observation into a form preferable for the WB compressor
+    # @param observation [NImage] an observation coming from the environment
+    #   through `AtariWrapper` (already resampled and converted to NArray)
+    # @return [Numo::DFloat] the normalized observation ready for processing
+    def normalize observation
+      WB::Tools::Normalization.feature_scaling observation,
+        from: obs_range, to: compr.vrange
+        # from: [observation.class::MIN, observation.class::MAX], to: compr.vrange
+    end
+
+    # Encodes an observation using the underlying compressor
+    # @param observation [NArray]
+    # @return [NArray] encoded observation
+    def encode obs
+      obs = normalize(obs) if obs.kind_of? NImage
+      compr.encode obs, type: encoding
+    end
+
+    # Compute the novelty of an observation as reconstruction error
+    # @param observation [NArray]
+    # @param code [Array]
+    # @return [Float] novelty score
+    def novelty obs, code
+      obs = normalize(obs) if obs.kind_of? NImage
+      compr.reconstr_error obs, code: code, type: encoding
     end
 
     # Train the compressor on the observations collected so far
@@ -70,16 +78,17 @@ module DNE
 
     # Show a centroid using ImageMagick
     def show_centroid idx, disp_size: [300,300]
-      require 'rmagick'
-      WB::Tools::Imaging.display centrs[idx], shape: downsampled_size, disp_size: disp_size
+      WB::Tools::Imaging.display centrs[idx], shape: downsampled_size.reverse, disp_size: disp_size
     end
 
     # Show all centroids using ImageMagick
-    def show_centroids disp_size: [300,300]
+    def show_centroids disp_size: [300,300], wait: true
       centrs.size.times &method(:show_centroid)
       puts "#{centrs.size} centroids displayed"
-      puts "Hit return to close them"
-      gets
+      if wait
+        puts "Hit return to close them"
+        gets
+      end
       nil
     ensure
       WB::Tools::Execution.kill_forks

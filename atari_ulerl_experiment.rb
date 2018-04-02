@@ -1,50 +1,44 @@
+require 'forwardable'
 require_relative 'gym_experiment'
 require_relative 'observation_compressor'
+require_relative 'atari_wrapper'
+require_relative 'tools'
 
 module DNE
+  NImage = Numo::UInt32
+
   # Specialized GymExperiment class for Atari environments and UL-ERL.
   class AtariUlerlExperiment < GymExperiment
 
     attr_reader :compr, :resize
 
     def initialize config
-      # compr before super
+      ## Why would I wish:
+      # compr before super (current choice)
       # - net.struct => compr.ncentrs
       # super before compr
-      # - config[:run][:debug]
+      # - config[:run][:debug] # can live without
+      # - compr.dims => AtariWrapper.downsample # gonna duplicate the process, beware
+      # - obs size => AtariWrapper orig_size
       puts "Initializing compressor" # if debug
-      @compr = init_compr config.delete :compr
+      compr_opts = config.delete(:compr) # otherwise unavailable for debug
+      compr_seed_proport = compr_opts.delete :seed_proport
+      @compr = ObservationCompressor.new **compr_opts
       puts "Loading Atari OpenAI Gym environment" # if debug
       super config
-    end
-
-    # Initializes the UL compressor
-    def init_compr **compr_opts
-      defaults = {
-        vrange: [0,1],
-        orig_size: [210,160] # ALE image size
-      }
-      DNE::ObservationCompressor.new **defaults.merge(compr_opts)
+      # initialize the centroids based on the env's reset obs
+      compr.reset_centrs single_env.reset_obs, proport: compr_seed_proport
+      compr.show_centroids
     end
 
     # Initializes the Atari environment
     # @note python environments interfaced through pycall
     # @param type [String] the type of environment as understood by OpenAI Gym
+    # @param [Array<Integer,Integer>] optional downsampling for rows and columns
     # @return an initialized environment
-    def init_env type:, resize_obs: nil
+    def init_env type:
       puts "  initializing env" if debug
-      gym.make(type).tap do |gym_env|
-        obs_size = gym_env.reset.shape.to_a
-        raise "Unrecognized Atari observation space" \
-          unless obs_size == [210, 160, 3]
-        gym_env.define_singleton_method(:obs_size) { obs_size }
-        act_type, act_size = gym_env.action_space.to_s.match(/(.*)\((\d*)\)/).captures
-        raise "Unrecognized Atari action space" \
-          unless act_size == '6' && act_type == 'Discrete'
-        gym_env.define_singleton_method(:act_type) { act_type.downcase.to_sym }
-        gym_env.define_singleton_method(:act_size) { Integer(act_size) }
-        gym_env.define_singleton_method(:resize_obs) { resize_obs }
-      end
+      AtariWrapper.new gym.make(type), downsample: compr.downsample, skip_type: skip_type
     end
 
     # Initialize the controller
@@ -58,12 +52,19 @@ module DNE
       netclass.new netstruct, act_fn: activation_function
     end
 
+OBS_AGGR = {
+  avg: -> (obs_lst) { obs_lst.reduce(:+) / obs_lst.size},
+  new: -> (obs_lst) { obs_lst.first - env.reset_obs},
+  first: -> (obs_lst) { obs_lst.first },
+  last: -> (obs_lst) { obs_lst.last }
+}
+
     # Return the fitness of a single genotype
     # @param genotype the individual to be evaluated
     # @param env the environment to use for the evaluation
     # @param render [bool] whether to render the evaluation on screen
     # @param nsteps [Integer] how many interactions to run with the game. One interaction is one action choosing + enacting and `skip_frames` repetitions
-    def fitness_one genotype, env: single_env, render: false, nsteps: max_nsteps
+    def fitness_one genotype, env: single_env, render: false, nsteps: max_nsteps, aggr_type: :last
       puts "Evaluating one individual" if debug
       puts "  Loading weights in network" if debug
       net.load_weights genotype # this also resets the state
@@ -73,23 +74,32 @@ module DNE
       compr_train = [nil, -Float::INFINITY]
       puts "  Running (max_nsteps: #{max_nsteps})" if debug
       nsteps.times do |i|
-        selected_action, normobs, novelty = action_for observation
-        compr_train = [normobs, novelty] if novelty > compr_train.last
+        code = compr.encode observation
+        selected_action = action_for code
+        novelty = compr.novelty observation, code
+        obs_lst, rew, done, info_lst = env.execute selected_action
 
-        observations, rewards, dones, infos = repeat_action.times.map do
-          env.step(selected_action).to_a
-        end.transpose
-        # NOTE: this blurs the observation. An alternative is to isolate what changes.
-        # Actually, should I go for it? Remove the background? But then how do I
-        # distinguish the games if I want a multi-games player?
-        observation = observations.reduce(:+) / observations.size
-        reward = rewards.reduce :+
-        done = dones.any?
 
-        tot_reward += reward
+# print rew, ' ' if debug # can print rew, code, novelty, done, info_lst
+
+
+        # What should I do here with the observations?
+        # Well I need to know
+        # - Which to use to decide the next action (default :last)
+        # - Which to pick to train the centroids   (default :last)
+        # Then I need to normalize them, possibly separately, for the moment
+        # let's just use the same to complete this refactoring
+        observation = OBS_AGGR[aggr_type].call obs_lst
+
+
+        tot_reward += rew
+        compr_train = [observation, novelty] if novelty > compr_train.last
         env.render if render
         break if done
       end
+
+# puts if debug
+
       compr.train_set << compr_train.first
       puts "=> Done, fitness: #{tot_reward}" if debug
       tot_reward
@@ -116,25 +126,23 @@ module DNE
       end
     end
 
-    # Return an action for an image observation
-    # @note this includes the non-banal sequence of converting the observation to network inputs, activating the network, then interpreting the network output as the corresponding action
-    # @param image [numpy array] screenshot from the Atari emulator
-    def action_for observation
-      # encode with the compressor
-      input, norm_obs, novelty = compr.encode observation
-
-      # TODO: probably a function generator here would be notably more efficient
-      # TODO: the normalization range depends on the net's activation function
-      output = net.activate input
-      begin # Why do I get NaN output sometimes?
+    # Return an action for an encoded observation
+    # The neural network is activated on the code, then its output is
+    # interpreted as a corresponding action
+    # @param code [Array] encoding for the current observation
+    # @return [Integer] action
+    # TODO: alternatives like softmax and such
+    def action_for code
+      output = net.activate code
+      begin
+        raise if output.isnan.any?
         action = output.max_index
       rescue ArgumentError, Parallel::UndumpableException
         puts "\n\nNaN NETWORK OUTPUT!"
         output.map! { |out| out = -Float::INFINITY if out.nan? }
         action = output.index output.max
       end
-      # hack: method should just return action
-      [action, norm_obs, novelty]
+      action
     end
 
     # Run the experiment
