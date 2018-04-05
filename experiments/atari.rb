@@ -11,8 +11,8 @@ config = {
   },
   run: {
     max_nsteps: 200,
-    max_ngens: 2,
-    # fitness_type: :sequential_single,
+    max_ngens: 5,
+    # fitness_type: :sequential_single, # pry-rescue exceptions avoiding Parallel workers
     fitness_type: :parallel, # [:sequential_single, :sequential_multi, :parallel]
     # random_seed: 1,
     skip_frames: 20, #5,
@@ -20,17 +20,27 @@ config = {
     debug: true
   },
   opt: {
-    type: :RNES
+    type: :BDNES
   },
   compr: {
     type: :OnlineVectorQuantization,
-    # type: :VectorQuantization, lrate: 0.7,
+      lrate_min_den: 1,
+      lrate_min: 0.001,
+      decay_rate: 1,
+    # type: :VectorQuantization,
+    #   lrate: 0.7,
+    # encoding: how to encode a vector based on similarity to centroids
     encoding: :ensemble_norm, # [:most_similar, :ensemble, :ensemble_norm]
-    ncentrs: 8,
+    # simil_type: how to measure similarity between a vector and a centroid
+
+
     # preproc: whether/which pre-processing to do on the image before elaboration
     preproc: :subtr_bg, # [:none, :subtr_bg]
+    simil_type: :mse, # [:dot, :mse]
+    seed_proport: 0.5, # proportional seeding of initial centroids with env reset obs
+
+    ncentrs: 50,
     downsample: [3, 2], # divisors [row, col]
-    seed_proport: 0.6, # proportional seeding of initial centroids with env reset obs
     init_centr_vrange: [-0.5, 0.5],
     # TODO: remove (automate) the following
     obs_range: [0, 255],
@@ -38,16 +48,18 @@ config = {
     orig_size: [210, 160] # ALE image size [row, col]
   }
 }
+
 exp = DNE::AtariUlerlExperiment.new config
+# exp.compr.show_centroids
 
 # require 'memory_profiler'
-# report = MemoryProfiler.report { exp.run }
+# report = MemoryProfiler.report do
+  exp.run
+# end
 # report.pretty_print
 
-exp.run
-
 puts "Re-running best individual "
-exp.show_best until_end: true
+# exp.show_best until_end: true
 exp.compr.show_centroids
 
 require 'pry'; binding.pry

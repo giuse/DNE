@@ -4,8 +4,6 @@ require 'machine_learning_workbench'
 module DNE
   # Wrap a WB compressor for usage on observation in a UL-ERL + PyCall context
   class ObservationCompressor
-    # Shorthands
-    WB = MachineLearningWorkbench
 
     extend Forwardable
     def_delegators :@compr, :ncentrs, :centrs, :ntrains
@@ -40,7 +38,7 @@ module DNE
     # Normalize an observation into a form preferable for the WB compressor
     # @param observation [NImage] an observation coming from the environment
     #   through `AtariWrapper` (already resampled and converted to NArray)
-    # @return [Numo::DFloat] the normalized observation ready for processing
+    # @return [NArray] the normalized observation ready for processing
     def normalize observation
       WB::Tools::Normalization.feature_scaling observation,
         from: obs_range, to: compr.vrange

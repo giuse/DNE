@@ -23,7 +23,7 @@ config = {
 
 exp = DNE::GymExperiment.new config
 exp.run
-print "Re-running best individual "
+puts "Re-running best individual "
 exp.show_best until_end: true
 
 require 'pry'; binding.pry

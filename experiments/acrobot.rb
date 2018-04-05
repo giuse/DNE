@@ -22,7 +22,7 @@ config = {
 
 exp = GymExperiment.new config
 exp.run
-print "Re-running best individual "
+puts "Re-running best individual "
 exp.show_best
 
 require 'pry'; binding.pry
