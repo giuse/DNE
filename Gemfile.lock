@@ -6,7 +6,7 @@ GEM
     coderay (1.1.2)
     debug_inspector (0.0.3)
     interception (0.5)
-    machine_learning_workbench (0.4.3)
+    machine_learning_workbench (0.5.0)
       numo-linalg (~> 0.1.2)
       numo-narray (~> 0.9)
       parallel (~> 1.12)
@@ -29,19 +29,21 @@ GEM
       binding_of_caller (>= 0.7)
       pry (>= 0.9.11)
     pycall (1.0.3)
+    rmagick (2.16.0)
     slop (3.6.0)
 
 PLATFORMS
   ruby
 
 DEPENDENCIES
-  machine_learning_workbench (>= 0.4.3)
+  machine_learning_workbench (>= 0.5)
   memory_profiler
   parallel
   pry-nav
   pry-rescue
   pry-stack_explorer
   pycall
+  rmagick
 
 BUNDLED WITH
    1.16.1
