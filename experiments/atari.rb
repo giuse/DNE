@@ -15,8 +15,8 @@ config = {
     # fitness_type: :sequential_single,
     fitness_type: :parallel, # [:sequential_single, :sequential_multi, :parallel]
     # random_seed: 1,
-    skip_frames: 50, #5,
-    skip_type: :noop,
+    skip_frames: 20, #5,
+    skip_type: :noop, # [:noop, :repeat]
     debug: true
   },
   opt: {
@@ -27,6 +27,8 @@ config = {
     # type: :VectorQuantization, lrate: 0.7,
     encoding: :ensemble_norm, # [:most_similar, :ensemble, :ensemble_norm]
     ncentrs: 8,
+    # preproc: whether/which pre-processing to do on the image before elaboration
+    preproc: :subtr_bg, # [:none, :subtr_bg]
     downsample: [3, 2], # divisors [row, col]
     seed_proport: 0.6, # proportional seeding of initial centroids with env reset obs
     init_centr_vrange: [-0.5, 0.5],

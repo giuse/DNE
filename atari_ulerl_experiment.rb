@@ -5,12 +5,13 @@ require_relative 'atari_wrapper'
 require_relative 'tools'
 
 module DNE
-  NImage = Numo::UInt32
+  # TODO: why doesn't it work when I use UInt8? We're in [0,255]!
+  NImage = Xumo::UInt32 # set a single data type for images
 
   # Specialized GymExperiment class for Atari environments and UL-ERL.
   class AtariUlerlExperiment < GymExperiment
 
-    attr_reader :compr, :resize
+    attr_reader :compr, :resize, :preproc
 
     def initialize config
       ## Why would I wish:
@@ -23,12 +24,12 @@ module DNE
       puts "Initializing compressor" # if debug
       compr_opts = config.delete(:compr) # otherwise unavailable for debug
       compr_seed_proport = compr_opts.delete :seed_proport
+      @preproc = compr_opts.delete :preproc
       @compr = ObservationCompressor.new **compr_opts
       puts "Loading Atari OpenAI Gym environment" # if debug
       super config
       # initialize the centroids based on the env's reset obs
       compr.reset_centrs single_env.reset_obs, proport: compr_seed_proport
-      compr.show_centroids
     end
 
     # Initializes the Atari environment
@@ -38,7 +39,8 @@ module DNE
     # @return an initialized environment
     def init_env type:
       puts "  initializing env" if debug
-      AtariWrapper.new gym.make(type), downsample: compr.downsample, skip_type: skip_type
+      AtariWrapper.new gym.make(type), downsample: compr.downsample,
+        skip_type: skip_type, preproc: preproc
     end
 
     # Initialize the controller
@@ -52,12 +54,13 @@ module DNE
       netclass.new netstruct, act_fn: activation_function
     end
 
-OBS_AGGR = {
-  avg: -> (obs_lst) { obs_lst.reduce(:+) / obs_lst.size},
-  new: -> (obs_lst) { obs_lst.first - env.reset_obs},
-  first: -> (obs_lst) { obs_lst.first },
-  last: -> (obs_lst) { obs_lst.last }
-}
+    # How to aggregate observations coming from a sequence of noops
+    OBS_AGGR = {
+      avg: -> (obs_lst) { obs_lst.reduce(:+) / obs_lst.size},
+      new: -> (obs_lst) { obs_lst.first - env.reset_obs},
+      first: -> (obs_lst) { obs_lst.first },
+      last: -> (obs_lst) { obs_lst.last }
+    }
 
     # Return the fitness of a single genotype
     # @param genotype the individual to be evaluated
@@ -77,7 +80,7 @@ OBS_AGGR = {
         code = compr.encode observation
         selected_action = action_for code
         novelty = compr.novelty observation, code
-        obs_lst, rew, done, info_lst = env.execute selected_action
+        obs_lst, rew, done, info_lst = env.execute selected_action, skip_frames: skip_frames
 
 
 # print rew, ' ' if debug # can print rew, code, novelty, done, info_lst

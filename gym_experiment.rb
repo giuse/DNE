@@ -22,13 +22,12 @@ require 'machine_learning_workbench'    # https://github.com/giuse/machine_learn
 
 # Deep Neuroevolution
 module DNE
+  # Shorthands
+  NES = WB::Optimizer::NaturalEvolutionStrategies
+  NN = WB::NeuralNetwork
+
   # Loads an experiment description from a config hash, initialize everything and run it
   class GymExperiment
-    # Shorthands
-    WB = MachineLearningWorkbench
-    NES = WB::Optimizer::NaturalEvolutionStrategies
-    NN = WB::NeuralNetwork
-
     include PyCall::Import
 
     attr_reader :config, :single_env, :net, :opt, :parall_envs, :max_nsteps, :max_ngens,
@@ -42,7 +41,7 @@ module DNE
       @termination_criteria = config[:run][:termination_criteria]
       @random_seed = config[:run][:random_seed]
       @debug = config[:run][:debug]
-      @skip_frames = (config[:run][:skip_frames] || 0) + 1
+      @skip_frames = config[:run][:skip_frames] || 0
       @skip_type = config[:run][:skip_type] || :noop
       @fit_fn = gen_fit_fn config[:run][:fitness_type]
       if debug
@@ -197,8 +196,8 @@ module DNE
     end
 
     SKIP_TYPE = {
-      noop: -> (act) { env.step(0) },
-      repeat: -> (act) { env.step(act) }
+      noop: -> (act, env) { env.step(0) },
+      repeat: -> (act, env) { env.step(act) }
     }
 
     # Return the fitness of a single genotype
@@ -220,8 +219,14 @@ module DNE
         # observation, reward, done, info = env.step(selected_action).to_a
         # skip_frames&.times { env.step 0 } # accelerate simulation
 
+
+        raise "Update this from ulerl"
+        # execute once, execute skip, unshift result, convert all
+        # need to pass also some of the helper functions in this class
+
+
         observations, rewards, dones, infos = skip_frames.times.map do
-          SKIP_TYPE[skip_type].call(selected_action).to_a
+          SKIP_TYPE[skip_type].call(selected_action, env).to_a
         end.transpose
         # NOTE: this blurs the observation. An alternative is to isolate what changes.
         observation = observations.reduce(:+) / observations.size
