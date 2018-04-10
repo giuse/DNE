@@ -102,11 +102,11 @@ module DNE
     def gen_fit_fn type
       if type.nil? || type == :parallel
         -> (genotypes) do
-          fits, trains = Parallel.map(0...genotypes.shape.first) do |i|
+          fits, parall_infos = Parallel.map(0...genotypes.shape.first) do |i|
             fit = fitness_one genotypes[i,true], env: parall_envs[i]
-            [fit, compr.train_set]
+            [fit, compr.parall_info]
           end.transpose
-          compr.train_set = trains.flatten
+          parall_infos.each &compr.method(:add_from_parall_info)
           fits.to_na
         end
       else
