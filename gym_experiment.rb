@@ -258,8 +258,9 @@ module DNE
     # param @until_end [bool] raises the `max_nsteps` to see interaction until `done`
     def show_best until_end: false
       nsteps = until_end ? max_nsteps*1000 : max_nsteps
+      print "Re-running best individual "
       fit = fitness_one opt.best.last, render: true, nsteps: nsteps
-      puts "Fitness: #{fit}"
+      puts "-- fitness: #{fit}"
     end
   end
 

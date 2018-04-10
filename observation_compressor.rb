@@ -6,14 +6,12 @@ module DNE
   class ObservationCompressor
 
     extend Forwardable
-    def_delegators :@compr, :ncentrs, :centrs, :ntrains
+    def_delegators :@compr, :ncentrs, :centrs, :ntrains, :encoding
 
-    attr_reader :encoding, :downsample, :downsampled_size, :compr, :train_set, :obs_range
-    attr_writer :train_set
+    attr_reader :downsample, :downsampled_size, :compr, :train_set, :obs_range
 
-    def initialize type:, encoding:, orig_size:, obs_range:, downsample: nil, **compr_args
+    def initialize type:, orig_size:, obs_range:, downsample: nil, **compr_args
       @obs_range = obs_range
-      @encoding = encoding
       @downsample = downsample
       raise ArgumentError, "Only downward scaling" if downsample.any? { |v| v < 1 }
       @downsampled_size = orig_size.zip(downsample).map { |s,r| s/r }
@@ -50,7 +48,7 @@ module DNE
     # @return [NArray] encoded observation
     def encode obs
       obs = normalize(obs) if obs.kind_of? NImage
-      compr.encode obs, type: encoding
+      compr.encode obs
     end
 
     # Compute the novelty of an observation as reconstruction error
@@ -59,7 +57,7 @@ module DNE
     # @return [Float] novelty score
     def novelty obs, code
       obs = normalize(obs) if obs.kind_of? NImage
-      compr.reconstr_error obs, code: code, type: encoding
+      compr.reconstr_error obs, code: code
     end
 
     # Train the compressor on the observations collected so far

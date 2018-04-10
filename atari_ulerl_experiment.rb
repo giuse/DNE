@@ -81,30 +81,15 @@ module DNE
         selected_action = action_for code
         novelty = compr.novelty observation, code
         obs_lst, rew, done, info_lst = env.execute selected_action, skip_frames: skip_frames
-
-
-# print rew, ' ' if debug # can print rew, code, novelty, done, info_lst
-
-
-        # What should I do here with the observations?
-        # Well I need to know
-        # - Which to use to decide the next action (default :last)
-        # - Which to pick to train the centroids   (default :last)
-        # Then I need to normalize them, possibly separately, for the moment
-        # let's just use the same to complete this refactoring
+        # puts "#{obs_lst}, #{rew}, #{done}, #{info_lst}" if debug
         observation = OBS_AGGR[aggr_type].call obs_lst
-
-
         tot_reward += rew
         compr_train = [observation, novelty] if novelty > compr_train.last
         env.render if render
         break if done
       end
-
-# puts if debug
-
       compr.train_set << compr_train.first
-      puts "=> Done, fitness: #{tot_reward}" if debug
+      puts "=> Done! fitness: #{tot_reward}" if debug
       tot_reward
     end
 
@@ -137,15 +122,10 @@ module DNE
     # TODO: alternatives like softmax and such
     def action_for code
       output = net.activate code
-      begin
-        raise if output.isnan.any?
-        action = output.max_index
-      rescue ArgumentError, Parallel::UndumpableException
-        puts "\n\nNaN NETWORK OUTPUT!"
-        output.map! { |out| out = -Float::INFINITY if out.nan? }
-        action = output.index output.max
-      end
-      action
+      nans = output.isnan
+      # this is a pretty reliable bug indicator
+      raise "\n\n\tNaN network output!!\n\n" if nans.any?
+      action = output.max_index
     end
 
     # Run the experiment
