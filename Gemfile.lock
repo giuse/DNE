@@ -6,7 +6,7 @@ GEM
     coderay (1.1.2)
     debug_inspector (0.0.3)
     interception (0.5)
-    machine_learning_workbench (0.5.0)
+    machine_learning_workbench (0.6.0)
       numo-linalg (~> 0.1.2)
       numo-narray (~> 0.9)
       parallel (~> 1.12)
@@ -36,7 +36,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  machine_learning_workbench (>= 0.5)
+  machine_learning_workbench (>= 0.6)
   memory_profiler
   parallel
   pry-nav

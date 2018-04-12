@@ -29,7 +29,8 @@ module DNE
       puts "Loading Atari OpenAI Gym environment" # if debug
       super config
       # initialize the centroids based on the env's reset obs
-      compr.reset_centrs single_env.reset_obs, proport: compr_seed_proport
+      # TODO: make this parametrizable in exp config
+      # compr.reset_centrs single_env.reset_obs, proport: compr_seed_proport
     end
 
     # Initializes the Atari environment
@@ -90,6 +91,7 @@ module DNE
       end
       compr.train_set << compr_train.first
       puts "=> Done! fitness: #{tot_reward}" if debug
+      print tot_reward, ' ' # if debug
       tot_reward
     end
 
@@ -131,8 +133,10 @@ module DNE
     # Run the experiment
     def run ngens: max_ngens
       ngens.times do |i|
-        print "Gen #{i+1}: "
+        puts Time.now
+        print "Gen #{i+1}/#{ngens} fits: "
         opt.train
+        puts # newline here because I'm `print`ing all ind fits in `opt.train`
         puts "Best fit so far: #{opt.best.first} -- " \
              "Avg fit: #{opt.last_fits.mean} -- " \
              "Conv: #{opt.convergence}"

@@ -130,7 +130,7 @@ module DNE
     # Initialize the optimizer
     # @param type [Symbol] name the NES algorithm of choice
     # @return an initialized NES instance
-    def init_opt type:
+    def init_opt type:, rescale_popsize: 1, rescale_lrate: 1
       dims = case type
       when :XNES, :SNES, :RNES, :FNES
         net.nweights
@@ -139,7 +139,8 @@ module DNE
       else
         raise NotImplementedError, "Make sure to add `#{type}` to the accepted ES"
       end
-      NES.const_get(type).new dims, fit_fn, :max, parallel_fit: true, rseed: random_seed
+      NES.const_get(type).new dims, fit_fn, :max, parallel_fit: true, rseed: random_seed,
+        rescale_popsize: rescale_popsize, rescale_lrate: rescale_lrate
     end
 
     # Return an action for an observation

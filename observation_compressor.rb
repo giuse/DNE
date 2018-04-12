@@ -6,7 +6,7 @@ module DNE
   class ObservationCompressor
 
     extend Forwardable
-    def_delegators :@compr, :ncentrs, :centrs, :ntrains, :encoding
+    def_delegators :@compr, :ncentrs, :centrs, :ntrains, :ntrains_skip, :encoding
 
     attr_reader :downsample, :downsampled_size, :compr, :train_set, :obs_range
 
@@ -77,10 +77,10 @@ module DNE
       WB::Tools::Imaging.display centrs[idx], shape: downsampled_size.reverse, disp_size: disp_size
     end
 
-    # Show all centroids using ImageMagick
-    def show_centroids disp_size: [300,300], wait: true
-      centrs.size.times &method(:show_centroid)
-      puts "#{centrs.size} centroids displayed"
+    # Show centroids using ImageMagick
+    def show_centroids to_disp=centrs.size.times, disp_size: [300,300], wait: true
+      to_disp.each &method(:show_centroid)
+      puts "#{to_disp.size}/#{centrs.size} centroids displayed"
       if wait
         puts "Hit return to close them"
         gets
