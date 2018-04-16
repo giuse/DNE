@@ -4,7 +4,8 @@ config = {
   net: {
     type: :Recurrent,
     hidden_layers: [],
-    activation_function: :logistic
+    activation_function: :logistic,
+    # steepness: 0.5
   },
   env: {
     type: 'Qbert-v0'
@@ -21,8 +22,9 @@ config = {
   },
   opt: {
     type: :BDNES,
-    rescale_popsize: 2, # it's a multiplicative factor
-    rescale_lrate: 0.5  # it's a multiplicative factor
+    rescale_popsize: 2, # multiplicative factor
+    # popsize: 5, # 5 is minimum for automatic utilities to work
+    rescale_lrate: 0.5  # multiplicative factor
   },
   compr: {
     type: :CopyVQ,
@@ -34,7 +36,7 @@ config = {
     # type: :VectorQuantization,
     #   lrate: 0.7,
     # encoding: how to encode a vector based on similarity to centroids
-    encoding_type: :ensemble_norm, # [:most_similar, :ensemble, :ensemble_norm]
+    encoding_type: :norm_ensemble, # [:most_similar, :ensemble, :norm_ensemble, :sparse_coding]
     # simil_type: how to measure similarity between a vector and a centroid
 
 

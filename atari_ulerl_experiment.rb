@@ -49,10 +49,10 @@ module DNE
     # @param hidden_layers [Array] list of hidden layer sizes for the networks structure
     # @param activation_function [Symbol] name one of the activation functions available
     # @return an initialized neural network
-    def init_net type:, hidden_layers:, activation_function:
+    def init_net type:, hidden_layers:, activation_function:, **act_fn_args
       netclass = NN.const_get(type)
       netstruct = [compr.ncentrs, *hidden_layers, single_env.act_size]
-      netclass.new netstruct, act_fn: activation_function
+      netclass.new netstruct, act_fn: activation_function, **act_fn_args
     end
 
     # How to aggregate observations coming from a sequence of noops

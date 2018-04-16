@@ -104,7 +104,7 @@ module DNE
     def add_from_parall_info tset:, utility:, ncodes:
       @train_set += tset
       compr.utility = case compr.encoding_type
-      when :ensemble, :ensemble_norm # both use a cumulative moving average
+      when :ensemble, :norm_ensemble # both use a cumulative moving average
         ((compr.ncodes * compr.utility) + (ncodes * utility)) / (compr.ncodes + ncodes)
       when :most_similar # only counts occurrencies
         compr.utility + util

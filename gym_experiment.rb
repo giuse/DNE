@@ -121,16 +121,17 @@ module DNE
     # @param hidden_layers [Array] list of hidden layer sizes for the networks structure
     # @param activation_function [Symbol] name one of the activation functions available
     # @return an initialized neural network
-    def init_net type:, hidden_layers:, activation_function:
+    # TODO: parametrize `ninputs` and remove overload in `atari_ulerl_experiment`
+    def init_net type:, hidden_layers:, activation_function:, **act_fn_args
       netclass = NN.const_get(type)
       netstruct = [single_env.obs_size, *hidden_layers, single_env.act_size]
-      netclass.new netstruct, act_fn: activation_function
+      netclass.new netstruct, act_fn: activation_function, **act_fn_args
     end
 
     # Initialize the optimizer
     # @param type [Symbol] name the NES algorithm of choice
     # @return an initialized NES instance
-    def init_opt type:, rescale_popsize: 1, rescale_lrate: 1
+    def init_opt type:, **opt_opt
       dims = case type
       when :XNES, :SNES, :RNES, :FNES
         net.nweights
@@ -139,8 +140,7 @@ module DNE
       else
         raise NotImplementedError, "Make sure to add `#{type}` to the accepted ES"
       end
-      NES.const_get(type).new dims, fit_fn, :max, parallel_fit: true, rseed: random_seed,
-        rescale_popsize: rescale_popsize, rescale_lrate: rescale_lrate
+      NES.const_get(type).new dims, fit_fn, :max, parallel_fit: true, rseed: random_seed, **opt_opt
     end
 
     # Return an action for an observation
