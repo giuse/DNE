@@ -57,10 +57,9 @@ module DNE
       @opt = init_opt config[:opt]
       puts "Initializing parallel environments" if debug
       unless config[:run][:fitness_type] == :sequential_single
-        # these for parallel fitness computation
-        @parall_envs = opt.popsize.times.map { init_env config[:env] }
-        # TODO: parallel initialization not working
-        # @parall_envs = Parallel.map(1..opt.popsize) { init_env config[:env] }
+        # for parallel fitness computation
+        # TODO: test if `single_env` forked is sufficient (i.e. if Python gets forked)
+        @parall_envs = Parallel.processor_count.times.map { init_env config[:env] }
       end
       puts "=> Initialization complete" if debug
     end

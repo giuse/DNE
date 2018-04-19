@@ -105,7 +105,7 @@ module DNE
       if type.nil? || type == :parallel
         -> (genotypes) do
           fits, parall_infos = Parallel.map(0...genotypes.shape.first) do |i|
-            fit = fitness_one genotypes[i,true], env: parall_envs[i]
+            fit = fitness_one genotypes[i,true], env: parall_envs[Parallel.worker_number]
             [fit, compr.parall_info]
           end.transpose
           parall_infos.each &compr.method(:add_from_parall_info)
