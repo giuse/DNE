@@ -2,9 +2,9 @@ require 'parallel'                      # https://github.com/grosser/parallel
 ENV["PYTHON"] = `which python3`.strip   # set python3 path for PyCall
 require 'pycall/import'                 # https://github.com/mrkn/pycall.rb/
 # IMPORTANT: `require 'numo/narray`' should come AFTER the first `pyimport :gym`
-# Don't ask me why, don't know, don't care. Check `gym_test.rb` to try it out.
+# Don't ask why, don't know, don't care. Check `gym_test.rb` to try it out.
 begin
-  puts "Loading OpenAI Gym through PyCall"
+  puts "Initializing OpenAI Gym through PyCall"
   include PyCall::Import
   pyimport :gym        # adds the OpenAI Gym environment
 rescue PyCall::PythonNotFound => err
@@ -31,7 +31,8 @@ module DNE
     include PyCall::Import
 
     attr_reader :config, :single_env, :net, :opt, :parall_envs, :max_nsteps, :max_ngens,
-      :termination_criteria, :random_seed, :debug, :skip_frames, :skip_type, :fit_fn
+      :termination_criteria, :random_seed, :debug, :skip_frames, :skip_type, :fit_fn, :netopts,
+      :opt_opt # hack away!! `AtariUlerlExperiment#update_opt`
 
     def initialize config
       @config = config
@@ -52,7 +53,10 @@ module DNE
       puts "Initializing single env" if debug
       @single_env = init_env config[:env] # one put aside for easy access
       puts "Initializing network" if debug
-      @net = init_net config[:net]
+      config[:net][:ninputs] ||= single_env.obs_size
+      config[:net][:noutputs] ||= single_env.act_size
+      @netopts = config[:net]
+      @net = init_net netopts
       puts "Initializing optimizer" if debug
       @opt = init_opt config[:opt]
       puts "Initializing parallel environments" if debug
@@ -119,11 +123,12 @@ module DNE
     # @param type [Symbol] name the class of neural network to use (from the WB)
     # @param hidden_layers [Array] list of hidden layer sizes for the networks structure
     # @param activation_function [Symbol] name one of the activation functions available
+    # @param ninputs [Integer] number of inputs to the network
+    # @param noutputs [Integer] number of outputs of the network
     # @return an initialized neural network
-    # TODO: parametrize `ninputs` and remove overload in `atari_ulerl_experiment`
-    def init_net type:, hidden_layers:, activation_function:, **act_fn_args
+    def init_net type:, hidden_layers:, activation_function:, ninputs:, noutputs:, **act_fn_args
       netclass = NN.const_get(type)
-      netstruct = [single_env.obs_size, *hidden_layers, single_env.act_size]
+      netstruct = [ninputs, *hidden_layers, noutputs]
       netclass.new netstruct, act_fn: activation_function, **act_fn_args
     end
 
@@ -131,6 +136,7 @@ module DNE
     # @param type [Symbol] name the NES algorithm of choice
     # @return an initialized NES instance
     def init_opt type:, **opt_opt
+      @opt_opt = opt_opt
       dims = case type
       when :XNES, :SNES, :RNES, :FNES
         net.nweights
@@ -254,14 +260,23 @@ module DNE
       end
     end
 
-    # Re-run the highest scoring individual found so far
-    # param @until_end [bool] raises the `max_nsteps` to see interaction until `done`
-    def show_best until_end: false
+    # Runs an individual, by default the highest scoring found so far
+    # @param which [<:best, :mean, NArray>] which individual to run: either the best,
+    #   the mean, or one passed directly as argument
+    # @param until_end [bool] raises the `max_nsteps` to see interaction until `done`
+    def show_ind which=:best, until_end: false
+      ind = case which
+        when :best then opt.best.last
+        when :mean then opt.mu
+        when NArray then which
+        else raise ArgumentError, "Which should I show? `#{which}`"
+      end
       nsteps = until_end ? max_nsteps*1000 : max_nsteps
       print "Re-running best individual "
-      fit = fitness_one opt.best.last, render: true, nsteps: nsteps
+      fit = fitness_one ind, render: true, nsteps: nsteps
       puts "-- fitness: #{fit}"
     end
+
   end
 
 end

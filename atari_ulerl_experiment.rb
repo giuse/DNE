@@ -23,14 +23,15 @@ module DNE
       # - obs size => AtariWrapper orig_size
       puts "Initializing compressor" # if debug
       compr_opts = config.delete(:compr) # otherwise unavailable for debug
-      compr_seed_proport = compr_opts.delete :seed_proport
+      seed_proport = compr_opts.delete :seed_proport
       @preproc = compr_opts.delete :preproc
       @compr = ObservationCompressor.new **compr_opts
+      # overload ninputs for network
+      config[:net][:ninputs] ||= compr.ncentrs
       puts "Loading Atari OpenAI Gym environment" # if debug
       super config
       # initialize the centroids based on the env's reset obs
-      # TODO: make this parametrizable in exp config
-      # compr.reset_centrs single_env.reset_obs, proport: compr_seed_proport
+      compr.reset_centrs single_env.reset_obs, proport: seed_proport if seed_proport
     end
 
     # Initializes the Atari environment
@@ -42,17 +43,6 @@ module DNE
       puts "  initializing env" if debug
       AtariWrapper.new gym.make(type), downsample: compr.downsample,
         skip_type: skip_type, preproc: preproc
-    end
-
-    # Initialize the controller
-    # @param type [Symbol] name the class of neural network to use (from the WB)
-    # @param hidden_layers [Array] list of hidden layer sizes for the networks structure
-    # @param activation_function [Symbol] name one of the activation functions available
-    # @return an initialized neural network
-    def init_net type:, hidden_layers:, activation_function:, **act_fn_args
-      netclass = NN.const_get(type)
-      netstruct = [compr.ncentrs, *hidden_layers, single_env.act_size]
-      netclass.new netstruct, act_fn: activation_function, **act_fn_args
     end
 
     # How to aggregate observations coming from a sequence of noops
@@ -67,15 +57,17 @@ module DNE
     # @param genotype the individual to be evaluated
     # @param env the environment to use for the evaluation
     # @param render [bool] whether to render the evaluation on screen
-    # @param nsteps [Integer] how many interactions to run with the game. One interaction is one action choosing + enacting and `skip_frames` repetitions
+    # @param nsteps [Integer] how many interactions to run with the game. One interaction is one action choosing + enacting followed by `skip_frames` frame skips
     def fitness_one genotype, env: single_env, render: false, nsteps: max_nsteps, aggr_type: :last
       puts "Evaluating one individual" if debug
       puts "  Loading weights in network" if debug
       net.load_weights genotype # this also resets the state
       observation = env.reset
+      # require 'pry'; binding.pry unless observation == env.reset_obs # => check passed
       env.render if render
       tot_reward = 0
-      compr_train = [nil, -Float::INFINITY]
+      represent_obs = [nil, -Float::INFINITY] # observation representative of ind novelty
+
       puts "  Running (max_nsteps: #{max_nsteps})" if debug
       nsteps.times do |i|
         code = compr.encode observation
@@ -85,11 +77,12 @@ module DNE
         # puts "#{obs_lst}, #{rew}, #{done}, #{info_lst}" if debug
         observation = OBS_AGGR[aggr_type].call obs_lst
         tot_reward += rew
-        compr_train = [observation, novelty] if novelty > compr_train.last
+        # The same observation represents the state both for action selection and for individual novelty
+        represent_obs = [observation, novelty] if novelty > represent_obs.last
         env.render if render
         break if done
       end
-      compr.train_set << compr_train.first
+      compr.train_set << represent_obs.first
       puts "=> Done! fitness: #{tot_reward}" if debug
       print tot_reward, ' ' # if debug
       tot_reward
@@ -130,19 +123,55 @@ module DNE
       action = output.max_index
     end
 
+    def update_opt
+      return if @curr_ninputs == compr.ncentrs
+      puts "  ncentrs: #{compr.ncentrs}"
+      diff = compr.ncentrs - @curr_ninputs
+      @curr_ninputs = compr.ncentrs
+      pl = net.struct.first(2).reduce(:*)
+      nw = diff * net.struct[1]
+
+      new_mu = opt.blocks.first.mu.insert pl, [0]*nw
+      new_sigma = opt.blocks.first.sigma.insert [pl]*nw, 0, axis: 0
+      new_sigma = new_sigma.insert [pl]*nw, 0, axis: 1
+      new_sigma.diagonal[pl...(pl+nw)] = 1
+
+      old = opt.blocks.first
+      opt.blocks[0] = NES::XNES.new new_mu.size, old.obj_fn, old.opt_type,
+        parallel_fit: old.parallel_fit, mu_init: new_mu, sigma_init: new_sigma,
+        **opt_opt
+      opt.blocks.first.instance_variable_set :@rng, old.rng # ensure rng continuity
+      opt.ndims_lst[0] = new_mu.size
+      puts "  new opt dims: #{opt.ndims_lst}"
+
+      # FIXME: I need to run these before I can use automatic popsize again!
+      # update popsize in bdnes and its blocks
+      # if opt.kind_of? BDNES or something
+      # opt.instance_variable_set :popsize, blocks.map(&:popsize).max
+      # opt.blocks.each { |xnes| xnes.instance_variable_set :@popsize, opt.popsize }
+
+      # update net, since inputs have changed
+      @net = init_net netopts.merge({ninputs: compr.ncentrs})
+      puts "  new net struct: #{net.struct}"
+    end
+
     # Run the experiment
     def run ngens: max_ngens
+      @curr_ninputs = compr.ncentrs
       ngens.times do |i|
         puts Time.now
         print "Gen #{i+1}/#{ngens} fits: "
+        # it just makes more sense run first, even though at first gen the trainset is empty
+        puts "Training compressor" if debug
+        compr.train
+        update_opt  # if I have more centroids, I should update opt
+
         opt.train
         puts # newline here because I'm `print`ing all ind fits in `opt.train`
         puts "Best fit so far: #{opt.best.first} -- " \
              "Avg fit: #{opt.last_fits.mean} -- " \
              "Conv: #{opt.convergence}"
         break if termination_criteria&.call(opt)
-        puts "Training compressor" if debug
-        compr.train
       end
     end
 

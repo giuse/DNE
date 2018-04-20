@@ -11,8 +11,8 @@ config = {
     type: 'Qbert-v0'
   },
   run: {
-    max_nsteps: 2000,
-    max_ngens: 100,
+    max_nsteps: 20,#00,
+    max_ngens: 10, #00,
     # fitness_type: :sequential_single, # pry-rescue exceptions avoiding Parallel workers
     fitness_type: :parallel, # [:sequential_single, :sequential_multi, :parallel]
     # random_seed: 1,
@@ -22,13 +22,15 @@ config = {
   },
   opt: {
     type: :BDNES,
-    rescale_popsize: 2, # multiplicative factor
-    # popsize: 5, # 5 is minimum for automatic utilities to work
-    rescale_lrate: 0.5  # multiplicative factor
+    # sigma_init: 10, # divergence!!
+    # rescale_popsize: 0.5, # multiplicative factor
+    popsize: 20, # 5 is minimum for automatic utilities to work
+    # rescale_lrate: 0.5  # multiplicative factor
+    lrate: 0.06 # "original" (CMA-ES) magic number calls for ~0.047 on 2000 dims
   },
   compr: {
-    type: :CopyVQ,
-      equal_simil: 0.1,
+    type: :IncrDictVQ, # [:VectorQuantization, :CopyVQ, :IncrDictVQ]
+      equal_simil: 1e-5,
     # type: :DecayingLearningRateVQ,
     #   lrate_min_den: 1,
     #   lrate_min: 0.001,
@@ -36,16 +38,20 @@ config = {
     # type: :VectorQuantization,
     #   lrate: 0.7,
     # encoding: how to encode a vector based on similarity to centroids
-    encoding_type: :norm_ensemble, # [:most_similar, :ensemble, :norm_ensemble, :sparse_coding]
+    encoding_type: :most_similar_ary, # [:most_similar, :most_similar_ary, :ensemble, :norm_ensemble, :sparse_coding]
     # simil_type: how to measure similarity between a vector and a centroid
-
-
     # preproc: whether/which pre-processing to do on the image before elaboration
+
+    # uhm, check if this set to `subtr_bg` is strictly necessary with IncrDictVQ?
     preproc: :subtr_bg, # [:none, :subtr_bg]
     # simil_type: :mse, # [:dot, :mse]
-    # seed_proport: 0.5, # proportional seeding of initial centroids with env reset obs
 
-    ncentrs: 200,
+
+    # BEWARE! If using IncrDictVQ need to set the following to `1.0`!
+    seed_proport: 1.0, # proportional seeding of initial centroids with env reset obs (nil => disabled)
+
+
+    # ncentrs: 20,#0,
     downsample: [3, 2], # divisors [row, col]
     init_centr_vrange: [-0.5, 0.5],
     # TODO: remove (automate) the following
@@ -64,7 +70,7 @@ exp = DNE::AtariUlerlExperiment.new config
 # end
 # report.pretty_print
 
-# exp.show_best until_end: true
+# exp.show_ind :mean, until_end: true
 # exp.compr.show_centroids
 
 require 'pry'; binding.pry

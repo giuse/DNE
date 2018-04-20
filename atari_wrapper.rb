@@ -4,7 +4,7 @@ module DNE
   # Convenience wrapper for the Atari OpenAI Gym environments
   class AtariWrapper
 
-    attr_reader :gym_env, :reset_obs, :reset_obs_py, :act_type, :act_size, :skip_type, :downsample, :preproc, :row_div, :col_div
+    attr_reader :gym_env, :reset_obs, :reset_obs_py, :act_type, :act_size, :obs_size, :skip_type, :downsample, :preproc, :row_div, :col_div
 
     extend Forwardable
     def_delegator :@gym_env, :render
@@ -19,6 +19,7 @@ module DNE
       raise "Not Atari act space" unless act_size == '6' && act_type == 'Discrete'
       @act_type = act_type.downcase.to_sym
       @act_size = Integer(act_size)
+      @obs_size = @reset_obs.size
     end
 
     # Converts pyimg into NArray, applying optional pre-processing and resampling
