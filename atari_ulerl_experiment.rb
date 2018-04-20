@@ -11,7 +11,7 @@ module DNE
   # Specialized GymExperiment class for Atari environments and UL-ERL.
   class AtariUlerlExperiment < GymExperiment
 
-    attr_reader :compr, :resize, :preproc
+    attr_reader :compr, :resize, :preproc, :nobs_per_ind
 
     def initialize config
       ## Why would I wish:
@@ -22,8 +22,9 @@ module DNE
       # - compr.dims => AtariWrapper.downsample # gonna duplicate the process, beware
       # - obs size => AtariWrapper orig_size
       puts "Initializing compressor" # if debug
-      compr_opts = config.delete(:compr) # otherwise unavailable for debug
+      compr_opts = config.delete :compr # otherwise unavailable for debug
       seed_proport = compr_opts.delete :seed_proport
+      @nobs_per_ind = compr_opts.delete :nobs_per_ind
       @preproc = compr_opts.delete :preproc
       @compr = ObservationCompressor.new **compr_opts
       # overload ninputs for network
@@ -63,10 +64,12 @@ module DNE
       puts "  Loading weights in network" if debug
       net.load_weights genotype # this also resets the state
       observation = env.reset
-      # require 'pry'; binding.pry unless observation == env.reset_obs # => check passed
+      # require 'pry'; binding.pry unless observation == env.reset_obs # => check passed, add to tests
       env.render if render
       tot_reward = 0
-      represent_obs = [nil, -Float::INFINITY] # observation representative of ind novelty
+      # set of observations with highest novelty, representative of the ability of the individual
+      # to obtain novel observations from the environment => hence reaching novel env states
+      represent_obs = []
 
       puts "  Running (max_nsteps: #{max_nsteps})" if debug
       nsteps.times do |i|
@@ -77,12 +80,20 @@ module DNE
         # puts "#{obs_lst}, #{rew}, #{done}, #{info_lst}" if debug
         observation = OBS_AGGR[aggr_type].call obs_lst
         tot_reward += rew
+
         # The same observation represents the state both for action selection and for individual novelty
-        represent_obs = [observation, novelty] if novelty > represent_obs.last
+        # OPT: most obs will most likely have lower novelty, so place it first
+        # TODO: I could add here a check if obs is already in represent_obs; in fact
+        #       though the probability is low (sequential markovian fully-observable env)
+        represent_obs.unshift [observation, novelty]
+        represent_obs.sort_by! &:last
+        represent_obs.shift if represent_obs.size > nobs_per_ind
+
         env.render if render
         break if done
       end
-      compr.train_set << represent_obs.first
+      # compr.train_set << represent_obs.first
+      represent_obs.each { |obs, _nov| compr.train_set << obs }
       puts "=> Done! fitness: #{tot_reward}" if debug
       print tot_reward, ' ' # if debug
       tot_reward

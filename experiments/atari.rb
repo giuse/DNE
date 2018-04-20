@@ -50,6 +50,7 @@ config = {
     # BEWARE! If using IncrDictVQ need to set the following to `1.0`!
     seed_proport: 1.0, # proportional seeding of initial centroids with env reset obs (nil => disabled)
 
+    nobs_per_ind: 3, # how many observations to get from each ind to train the compressor
 
     # ncentrs: 20,#0,
     downsample: [3, 2], # divisors [row, col]
