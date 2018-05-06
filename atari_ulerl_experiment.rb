@@ -16,7 +16,7 @@ module DNE
     def initialize config
       ## Why would I wish:
       # compr before super (current choice)
-      # - net.struct => compr.ncentrs
+      # - net.struct => compr.code_size
       # super before compr
       # - config[:run][:debug] # can live without
       # - compr.dims => AtariWrapper.downsample # gonna duplicate the process, beware
@@ -29,7 +29,7 @@ module DNE
       @ntrials_per_ind = config[:run].delete :ntrials_per_ind
       @compr = ObservationCompressor.new **compr_opts
       # overload ninputs for network
-      config[:net][:ninputs] ||= compr.ncentrs
+      config[:net][:ninputs] ||= compr.code_size
       puts "Loading Atari OpenAI Gym environment" # if debug
       super config
       # initialize the centroids based on the env's reset obs
@@ -72,7 +72,8 @@ module DNE
     def fitness_one genotype, env: single_env, render: false, nsteps: max_nsteps, aggr_type: :last
       puts "Evaluating one individual" if debug
       puts "  Loading weights in network" if debug
-      net.load_weights genotype # this also resets the state
+      net.deep_reset
+      net.load_weights genotype
       observation = env.reset
       # require 'pry'; binding.pry unless observation == env.reset_obs # => check passed, add to tests
       env.render if render
@@ -157,10 +158,10 @@ module DNE
     end
 
     def update_opt
-      return if @curr_ninputs == compr.ncentrs
-      puts "  ncentrs: #{compr.ncentrs}"
-      diff = compr.ncentrs - @curr_ninputs
-      @curr_ninputs = compr.ncentrs
+      return false if @curr_ninputs == compr.code_size
+      puts "  code_size: #{compr.code_size}"
+      diff = compr.code_size - @curr_ninputs
+      @curr_ninputs = compr.code_size
       pl = net.struct.first(2).reduce(:*)
       nw = diff * net.struct[1]
 
@@ -184,13 +185,14 @@ module DNE
       # opt.blocks.each { |xnes| xnes.instance_variable_set :@popsize, opt.popsize }
 
       # update net, since inputs have changed
-      @net = init_net netopts.merge({ninputs: compr.ncentrs})
+      @net = init_net netopts.merge({ninputs: compr.code_size})
       puts "  new net struct: #{net.struct}"
+      return true
     end
 
     # Run the experiment
     def run ngens: max_ngens
-      @curr_ninputs = compr.ncentrs
+      @curr_ninputs = compr.code_size
       ngens.times do |i|
         $ngen = i # allows for conditional debugger calls
         puts Time.now

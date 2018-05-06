@@ -6,7 +6,7 @@ module DNE
   class ObservationCompressor
 
     extend Forwardable
-    def_delegators :@compr, :ncentrs, :centrs, :ntrains, :ntrains_skip, :encoding
+    def_delegators :@compr, :ncentrs, :centrs, :ntrains, :ntrains_skip, :encoding, :code_size
 
     attr_reader :downsample, :downsampled_size, :compr, :train_set, :obs_range
 
@@ -51,12 +51,12 @@ module DNE
       compr.encode obs
     end
 
-    # Compute the novelty of an observation as reconstruction error
+    # Compute the novelty of an observation as aggregated reconstruction error
     # @param observation [NArray]
     # @param code [Array]
     # @return [Float] novelty score
     def novelty obs, code
-      compr.reconstr_error obs, code: code
+      compr.reconstr_error(obs, code: code).abs.mean
     end
 
     # Train the compressor on the observations collected so far
@@ -74,13 +74,14 @@ module DNE
 
     # Show a centroid using ImageMagick
     def show_centroid idx, disp_size: [300,300]
-      WB::Tools::Imaging.display centrs[idx], shape: downsampled_size.reverse, disp_size: disp_size
+      WB::Tools::Imaging.display centrs[idx, true], shape: downsampled_size.reverse, disp_size: disp_size
     end
 
     # Show centroids using ImageMagick
-    def show_centroids to_disp=centrs.size.times, disp_size: [300,300], wait: true
+    def show_centroids to_disp=ncentrs, disp_size: [300, 300], wait: true
+      to_disp = to_disp.times unless to_disp.kind_of? Enumerable
       to_disp.each &method(:show_centroid)
-      puts "#{to_disp.size}/#{centrs.size} centroids displayed"
+      puts "#{to_disp.size}/#{centrs.shape.first} centroids displayed"
       if wait
         puts "Hit return to close them"
         gets
@@ -105,13 +106,12 @@ module DNE
       # NOTE: here tset contains `NImage`s, will convert into `NArray`s in `#train`
       @train_set += tset # this already works regardless of the size of tset
       compr.utility = case compr.encoding_type
-      when :ensemble, :norm_ensemble # both use a cumulative moving average
+      when :ensemble, :norm_ensemble, :sparse_coding # cumulative moving average
         ((compr.ncodes * compr.utility) + (ncodes * utility)) / (compr.ncodes + ncodes)
       when :most_similar_ary # counts occurrencies in array
         compr.utility + utility
       when :most_similar # only counts occurrencies
-        raise "I think this is wrong, should't it be like `compr.utility[util] += 1`?"
-        compr.utility + utility
+        compr.utility[util] += 1
       else raise ArgumentError "how did you even get here?"
       end
       compr.ncodes += ncodes
