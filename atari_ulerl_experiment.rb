@@ -167,18 +167,40 @@ module DNE
       pl = net.struct.first(2).reduce(:*)
       nw = diff * net.struct[1]
 
-      new_mu = opt.blocks.first.mu.insert pl, [0]*nw
-      new_sigma = opt.blocks.first.sigma.insert [pl]*nw, 0, axis: 0
-      new_sigma = new_sigma.insert [pl]*nw, 0, axis: 1
-      new_sigma.diagonal[pl...(pl+nw)] = 1
+      new_mu_val = 0     # value for the new means (0)
+      new_var_val = 0.0001  # value for the new variances (diagonal of covariance) (1)
+      new_cov_val = 0    # value for the other covariances (outside diagonal) (0)
 
-      old = opt.blocks.first
-      opt.blocks[0] = NES::XNES.new new_mu.size, old.obj_fn, old.opt_type,
+      old = case opt_type
+      when :XNES  then opt
+      when :BDNES then opt.blocks.first
+      else raise NotImplementedError, "refactor and fill in this case block"
+      end
+
+      new_mu = old.mu.insert pl, [new_mu_val]*nw
+      new_sigma = old.sigma.insert [pl]*nw, new_cov_val, axis: 0
+      new_sigma = new_sigma.insert [pl]*nw, new_cov_val, axis: 1
+      new_sigma.diagonal[pl...(pl+nw)] = new_var_val
+
+      new_nes = NES::XNES.new new_mu.size, old.obj_fn, old.opt_type,
         parallel_fit: old.parallel_fit, mu_init: new_mu, sigma_init: new_sigma,
         **opt_opt
-      opt.blocks.first.instance_variable_set :@rng, old.rng # ensure rng continuity
-      opt.ndims_lst[0] = new_mu.size
-      puts "  new opt dims: #{opt.ndims_lst}"
+      new_nes.instance_variable_set :@rng, old.rng   # ensure rng continuity
+      new_nes.instance_variable_set :@best, old.best # ensure best continuity
+
+      case opt_type
+      when :XNES
+        @opt = new_nes
+        puts "  new opt dims: #{opt.ndims}"
+      when :BDNES
+        opt.blocks[0] = new_nes
+        opt.ndims_lst[0] = new_mu.size
+        puts "  new opt dims: #{opt.ndims_lst}"
+      else raise NotImplementedError, "refactor and fill in this case block"
+      end
+
+      puts "  popsize: #{opt.popsize}"
+      puts "  lrate: #{opt.lrate}"
 
       # FIXME: I need to run these before I can use automatic popsize again!
       # update popsize in bdnes and its blocks
