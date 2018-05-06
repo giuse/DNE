@@ -189,7 +189,8 @@ module DNE
     # @param type the type of computation
     # @return [lambda] function that evaluates the fitness of a list of genotype
     # @note returned function has param genotypes [Array<gtype>] list of genotypes, return [Array<Numeric>] list of fitnesses for each genotype
-    def gen_fit_fn type
+    # TODO: implement ntrials!!
+    def gen_fit_fn type, ntrials: nil
       type ||= :parallel
       case type
       # SEQUENTIAL ON SINGLE ENVIRONMENT

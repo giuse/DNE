@@ -11,7 +11,7 @@ module DNE
   # Specialized GymExperiment class for Atari environments and UL-ERL.
   class AtariUlerlExperiment < GymExperiment
 
-    attr_reader :compr, :resize, :preproc, :nobs_per_ind
+    attr_reader :compr, :resize, :preproc, :nobs_per_ind, :ntrials_per_ind
 
     def initialize config
       ## Why would I wish:
@@ -26,6 +26,7 @@ module DNE
       seed_proport = compr_opts.delete :seed_proport
       @nobs_per_ind = compr_opts.delete :nobs_per_ind
       @preproc = compr_opts.delete :preproc
+      @ntrials_per_ind = config[:run].delete :ntrials_per_ind
       @compr = ObservationCompressor.new **compr_opts
       # overload ninputs for network
       config[:net][:ninputs] ||= compr.ncentrs
@@ -114,7 +115,7 @@ module DNE
     # @param type the type of computation
     # @return [lambda] function that evaluates the fitness of a list of genotype
     # @note returned function has param genotypes [Array<gtype>] list of genotypes, return [Array<Numeric>] list of fitnesses for each genotype
-    def gen_fit_fn type
+    def gen_fit_fn type, ntrials: ntrials_per_ind
       if type.nil? || type == :parallel
         nprocs = Parallel.processor_count - 1 # it's actually faster this way
         puts "Running in parallel on #{nprocs} processes"
@@ -124,6 +125,10 @@ module DNE
               in_processes: nprocs, isolation: true) do |i|
             # env = parall_envs[Parallel.worker_number]
             env = parall_envs[i] # leveraging dynamic env allocation
+            # fit = fitness_one genotypes[i, true], env: env
+            fits = ntrials.times.map { fitness_one genotypes[i, true], env: env }
+            fit = fits.to_na.mean
+            print "[m#{fit}] "
             [fit, compr.parall_info]
           end.transpose
           puts # newline here because I'm done `print`ing all ind fits
@@ -187,8 +192,9 @@ module DNE
     def run ngens: max_ngens
       @curr_ninputs = compr.ncentrs
       ngens.times do |i|
+        $ngen = i # allows for conditional debugger calls
         puts Time.now
-        print "Gen #{i+1}/#{ngens} fits: "
+        puts "# Gen #{i+1}/#{ngens}"
         # it just makes more sense run first, even though at first gen the trainset is empty
         puts "Training compressor" if debug
         compr.train
