@@ -83,8 +83,9 @@ module DNE
       represent_obs = []
 
       puts "  Running (max_nsteps: #{max_nsteps})" if debug
-      nsteps.times do |i|
+      runtime = nsteps.times do |i|
         code = compr.encode observation
+        # print code.to_a
         selected_action = action_for code
         novelty = compr.novelty observation, code
         obs_lst, rew, done, info_lst = env.execute selected_action, skip_frames: skip_frames
@@ -101,12 +102,13 @@ module DNE
         represent_obs.shift if represent_obs.size > nobs_per_ind
 
         env.render if render
-        break if done
+        break i if done
       end
       # compr.train_set << represent_obs.first
       represent_obs.each { |obs, _nov| compr.train_set << obs }
       puts "=> Done! fitness: #{tot_reward}" if debug
-      print tot_reward, ' ' # if debug
+      # print tot_reward, ' ' # if debug
+      print "#{tot_reward}(#{runtime}) "
       tot_reward
     end
 
