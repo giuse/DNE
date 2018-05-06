@@ -239,6 +239,42 @@ module DNE
       end
     end
 
+    # Save experiment current state to file
+    def dump fname="dumps/atari_#{Time.now.strftime '%y%m%d_%H%M'}.bin"
+      raise NotImplementedError, "doesn't work with BDNES atm" if config[:opt][:type] == :BDNES
+      File.open(fname, 'wb') do |f|
+        Marshal.dump(
+          { config: config,
+            best: opt.best.last,
+            mu: opt.mu,
+            sigma: opt.sigma,
+            centrs: compr.centrs
+          }, f)
+      end
+      puts "Experiment data dumped to `#{fname}`"
+      true
+    end
+
+    # Load experiment state from file
+    def load fname=Dir["dumps/atari_*.bin"].sort.last
+      hsh = File.open(fname, 'r') { |f| Marshal.load f }
+      initialize hsh[:config]
+      opt.instance_variable_set :@best, hsh[:best]
+      opt.instance_variable_set :@mu, hsh[:mu]
+      opt.instance_variable_set :@sigma, hsh[:sigma]
+      compr.instance_variable_set :@centrs, hsh[:centrs]
+      # what else needs to be done in order to be able to run `#show_ind`?
+      puts "Experiment data loaded from `#{fname}`"
+      true
+    end
+
+    # Return an initialized exp from state on file
+    def self.load fname=Dir["atari_*.bin"].sort.last
+      # will initialize twice, but we're sure to have a conform `hsh[:config]`
+      hsh = File.open(fname, 'r') { |f| Marshal.load f }
+      new(hsh[:config]).tap { |exp| exp.load fname }
+    end
+
   end
 end
 
