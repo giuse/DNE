@@ -32,7 +32,7 @@ module DNE
 
     attr_reader :config, :single_env, :net, :opt, :parall_envs, :max_nsteps, :max_ngens,
       :termination_criteria, :random_seed, :debug, :skip_frames, :skip_type, :fit_fn, :netopts,
-      :opt_opt # hack away!! `AtariUlerlExperiment#update_opt`
+      :opt_type, :opt_opt # hack away!! `AtariUlerlExperiment#update_opt`
 
     def initialize config
       @config = config
@@ -59,13 +59,28 @@ module DNE
       @net = init_net netopts
       puts "Initializing optimizer" if debug
       @opt = init_opt config[:opt]
-      puts "Initializing parallel environments" if debug
-      unless config[:run][:fitness_type] == :sequential_single
-        # for parallel fitness computation
-        # TODO: test if `single_env` forked is sufficient (i.e. if Python gets forked)
-        @parall_envs = Parallel.processor_count.times.map { init_env config[:env] }
-      end
+      # puts "Initializing parallel environments" if debug
+      # unless config[:run][:fitness_type] == :sequential_single
+      #   # for parallel fitness computation
+      #   # TODO: test if `single_env` forked is sufficient (i.e. if Python gets forked)
+      #   @parall_envs = Parallel.processor_count.times.map { init_env config[:env] }
+      # end
+      @parall_envs = ParallEnvs.new method(:init_env), config[:env]
+
       puts "=> Initialization complete" if debug
+    end
+
+    # Automatic, dynamic environment initialization
+    class ParallEnvs < Array
+      attr_reader :init_fn, :config
+      def initialize init_fn, config
+        @init_fn = init_fn
+        @config = config
+        super()
+      end
+      def [] i
+        super || (self[i] = init_fn.call config)
+      end
     end
 
     # Debugging utility.
@@ -136,6 +151,7 @@ module DNE
     # @param type [Symbol] name the NES algorithm of choice
     # @return an initialized NES instance
     def init_opt type:, **opt_opt
+      @opt_type = type
       @opt_opt = opt_opt
       dims = case type
       when :XNES, :SNES, :RNES, :FNES
@@ -191,9 +207,9 @@ module DNE
       # PARALLEL ON MULTIPLE ENVIRONMENTS
       # => because why not
       when :parallel
+        nprocs = Parallel.processor_count - 1 # it's actually faster this way
         -> (genotypes) do
-          # TODO: initialize only as many parall_envs as Parallel workers
-          Parallel.map(0...genotypes.shape.first) do |i|
+          Parallel.map(0...genotypes.shape.first, in_processes: nprocs) do |i|
             fitness_one genotypes[i,true], env: parall_envs[i]
           end.to_na
         end
@@ -214,7 +230,8 @@ module DNE
     def fitness_one genotype, env: single_env, render: false, nsteps: max_nsteps
       puts "Evaluating one individual" if debug
       puts "  Loading weights in network" if debug
-      net.load_weights genotype # this also resets the state
+      net.deep_reset
+      net.load_weights genotype
       observation = env.reset
       env.render if render
       tot_reward = 0

@@ -40,8 +40,17 @@ module DNE
     # @param type [String] the type of environment as understood by OpenAI Gym
     # @param [Array<Integer,Integer>] optional downsampling for rows and columns
     # @return an initialized environment
+
+
+    # NEW ENVS CURRENTLY SPAWNED IN PARALL CHILD
+    # means that they'll get respawned every time
+    # should instead update @parall_env in parent after every pop
+    # for now keep like this, spawning is fast and gets deleted with child process
+    # we are ensuring there's one per ind and that's what matters
+    # note the same env is used for multiple evals on each ind
     def init_env type:
-      puts "  initializing env" if debug
+      # puts "  initializing env" if debug
+      # print "(newenv) " #if debug
       AtariWrapper.new gym.make(type), downsample: compr.downsample,
         skip_type: skip_type, preproc: preproc
     end
@@ -107,12 +116,20 @@ module DNE
     # @note returned function has param genotypes [Array<gtype>] list of genotypes, return [Array<Numeric>] list of fitnesses for each genotype
     def gen_fit_fn type
       if type.nil? || type == :parallel
+        nprocs = Parallel.processor_count - 1 # it's actually faster this way
+        puts "Running in parallel on #{nprocs} processes"
         -> (genotypes) do
-          fits, parall_infos = Parallel.map(0...genotypes.shape.first) do |i|
-            fit = fitness_one genotypes[i,true], env: parall_envs[Parallel.worker_number]
+          print "Fits: "
+          fits, parall_infos = Parallel.map(0...genotypes.shape.first,
+              in_processes: nprocs, isolation: true) do |i|
+            # env = parall_envs[Parallel.worker_number]
+            env = parall_envs[i] # leveraging dynamic env allocation
             [fit, compr.parall_info]
           end.transpose
+          puts # newline here because I'm done `print`ing all ind fits
+          puts "Exporting training images"
           parall_infos.each &compr.method(:add_from_parall_info)
+          puts "Training optimizer"
           fits.to_na
         end
       else
