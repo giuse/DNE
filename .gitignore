@@ -1,5 +1,8 @@
-logs/
-server-out/
+/logs/
+/log/
+/analysis/
+/dumps/
+/server-out/
 /gameState*
 sources.txt
 /stats/

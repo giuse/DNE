@@ -223,14 +223,18 @@ module DNE
         puts "# Gen #{i+1}/#{ngens}"
         # it just makes more sense run first, even though at first gen the trainset is empty
         puts "Training compressor" if debug
+
         compr.train
         update_opt  # if I have more centroids, I should update opt
 
         opt.train
-        puts # newline here because I'm `print`ing all ind fits in `opt.train`
         puts "Best fit so far: #{opt.best.first} -- " \
-             "Avg fit: #{opt.last_fits.mean} -- " \
+             "Fit mean: #{opt.last_fits.mean} -- " \
+             "Fit stddev: #{opt.last_fits.stddev}\n" \
+             "Mu mean: #{opt.mu.mean} -- " \
+             "Mu stddev: #{opt.mu.stddev} -- " \
              "Conv: #{opt.convergence}"
+
         break if termination_criteria&.call(opt)
       end
     end
@@ -238,4 +242,4 @@ module DNE
   end
 end
 
-puts "USAGE: `bundle exec ruby experiments/atari/<expname>.rb`" if __FILE__ == $0
+puts "USAGE: `bundle exec ruby experiments/atari.rb`" if __FILE__ == $0
