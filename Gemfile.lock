@@ -1,3 +1,11 @@
+PATH
+  remote: /home/giuse/machine_learning_workbench
+  specs:
+    machine_learning_workbench (0.8.0)
+      numo-linalg (~> 0.1)
+      numo-narray (~> 0.9)
+      parallel (~> 1.12)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -6,10 +14,6 @@ GEM
     coderay (1.1.2)
     debug_inspector (0.0.3)
     interception (0.5)
-    machine_learning_workbench (0.8.0)
-      numo-linalg (~> 0.1)
-      numo-narray (~> 0.9)
-      parallel (~> 1.12)
     memory_profiler (0.9.10)
     method_source (0.8.2)
     numo-linalg (0.1.2)
@@ -36,7 +40,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  machine_learning_workbench (>= 0.8)
+  machine_learning_workbench!
   memory_profiler
   parallel
   pry-nav

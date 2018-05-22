@@ -28,7 +28,7 @@ module DNE
       @preproc = compr_opts.delete :preproc
       @ntrials_per_ind = config[:run].delete :ntrials_per_ind
       @compr = ObservationCompressor.new **compr_opts
-      # overload ninputs for network
+      # default ninputs for network
       config[:net][:ninputs] ||= compr.code_size
       puts "Loading Atari OpenAI Gym environment" # if debug
       super config
@@ -78,34 +78,45 @@ module DNE
       # require 'pry'; binding.pry unless observation == env.reset_obs # => check passed, add to tests
       env.render if render
       tot_reward = 0
-      # set of observations with highest novelty, representative of the ability of the individual
-      # to obtain novel observations from the environment => hence reaching novel env states
-      represent_obs = []
+      # # set of observations with highest novelty, representative of the ability of the individual
+      # # to obtain novel observations from the environment => hence reaching novel env states
+      # represent_obs = []
+
+      puts "IGNORING `nobs_per_ind=#{nobs_per_ind}` (random sampling obs)" if nobs_per_ind
+      represent_obs = observation
+      nobs = 1
 
       puts "  Running (max_nsteps: #{max_nsteps})" if debug
       runtime = nsteps.times do |i|
         code = compr.encode observation
         # print code.to_a
         selected_action = action_for code
-        novelty = compr.novelty observation, code
         obs_lst, rew, done, info_lst = env.execute selected_action, skip_frames: skip_frames
         # puts "#{obs_lst}, #{rew}, #{done}, #{info_lst}" if debug
         observation = OBS_AGGR[aggr_type].call obs_lst
         tot_reward += rew
+        ## NOTE: SWAP COMMENTS ON THE FOLLOWING to switch to novelty-based obs selection
+        # # The same observation represents the state both for action selection and for individual novelty
+        # # OPT: most obs will most likely have lower novelty, so place it first
+        # # TODO: I could add here a check if obs is already in represent_obs; in fact
+        # #       though the probability is low (sequential markovian fully-observable env)
+        # novelty = compr.novelty observation, code
+        # represent_obs.unshift [observation, novelty]
+        # represent_obs.sort_by! &:last
+        # represent_obs.shift if represent_obs.size > nobs_per_ind
 
-        # The same observation represents the state both for action selection and for individual novelty
-        # OPT: most obs will most likely have lower novelty, so place it first
-        # TODO: I could add here a check if obs is already in represent_obs; in fact
-        #       though the probability is low (sequential markovian fully-observable env)
-        represent_obs.unshift [observation, novelty]
-        represent_obs.sort_by! &:last
-        represent_obs.shift if represent_obs.size > nobs_per_ind
+        # Random sampling for representative obs
+        nobs += 1
+        represent_obs = observation if rand < 1.0/nobs
+
+        # Image selection by random sampling
 
         env.render if render
         break i if done
       end
-      # compr.train_set << represent_obs.first
-      represent_obs.each { |obs, _nov| compr.train_set << obs }
+      compr.train_set << represent_obs
+      # for novelty:
+      # represent_obs.each { |obs, _nov| compr.train_set << obs }
       puts "=> Done! fitness: #{tot_reward}" if debug
       # print tot_reward, ' ' # if debug
       print "#{tot_reward}(#{runtime}) "
@@ -119,29 +130,26 @@ module DNE
     # @return [lambda] function that evaluates the fitness of a list of genotype
     # @note returned function has param genotypes [Array<gtype>] list of genotypes, return [Array<Numeric>] list of fitnesses for each genotype
     def gen_fit_fn type, ntrials: ntrials_per_ind
-      if type.nil? || type == :parallel
-        nprocs = Parallel.processor_count - 1 # it's actually faster this way
-        puts "Running in parallel on #{nprocs} processes"
-        -> (genotypes) do
-          print "Fits: "
-          fits, parall_infos = Parallel.map(0...genotypes.shape.first,
-              in_processes: nprocs, isolation: true) do |i|
-            # env = parall_envs[Parallel.worker_number]
-            env = parall_envs[i] # leveraging dynamic env allocation
-            # fit = fitness_one genotypes[i, true], env: env
-            fits = ntrials.times.map { fitness_one genotypes[i, true], env: env }
-            fit = fits.to_na.mean
-            print "[m#{fit}] "
-            [fit, compr.parall_info]
-          end.transpose
-          puts # newline here because I'm done `print`ing all ind fits
-          puts "Exporting training images"
-          parall_infos.each &compr.method(:add_from_parall_info)
-          puts "Training optimizer"
-          fits.to_na
-        end
-      else
-        super
+      return super unless type.nil? || type == :parallel
+      nprocs = Parallel.processor_count - 1 # it's actually faster this way
+      puts "Running in parallel on #{nprocs} processes"
+      -> (genotypes) do
+        print "Fits: "
+        fits, parall_infos = Parallel.map(0...genotypes.shape.first,
+            in_processes: nprocs, isolation: true) do |i|
+          # env = parall_envs[Parallel.worker_number]
+          env = parall_envs[i] # leveraging dynamic env allocation
+          # fit = fitness_one genotypes[i, true], env: env
+          fits = ntrials.times.map { fitness_one genotypes[i, true], env: env }
+          fit = fits.to_na.mean
+          print "[m#{fit}] "
+          [fit, compr.parall_info]
+        end.transpose
+        puts # newline here because I'm done `print`ing all ind fits
+        puts "Exporting training images"
+        parall_infos.each &compr.method(:add_from_parall_info)
+        puts "Training optimizer"
+        fits.to_na
       end
     end
 
@@ -156,6 +164,7 @@ module DNE
       nans = output.isnan
       # this is a pretty reliable bug indicator
       raise "\n\n\tNaN network output!!\n\n" if nans.any?
+      # action = output[0...6].max_index # limit to 6 actions
       action = output.max_index
     end
 
@@ -168,7 +177,7 @@ module DNE
       nw = diff * net.struct[1]
 
       new_mu_val = 0     # value for the new means (0)
-      new_var_val = 0.0001  # value for the new variances (diagonal of covariance) (1)
+      new_var_val = 0.0001  # value for the new variances (diagonal of covariance) (<<1)
       new_cov_val = 0    # value for the other covariances (outside diagonal) (0)
 
       old = case opt_type
@@ -203,7 +212,7 @@ module DNE
       puts "  lrate: #{opt.lrate}"
 
       # FIXME: I need to run these before I can use automatic popsize again!
-      # update popsize in bdnes and its blocks
+      # => update popsize in bdnes and its blocks before using it again
       # if opt.kind_of? BDNES or something
       # opt.instance_variable_set :popsize, blocks.map(&:popsize).max
       # opt.blocks.each { |xnes| xnes.instance_variable_set :@popsize, opt.popsize }
@@ -218,7 +227,7 @@ module DNE
     def run ngens: max_ngens
       @curr_ninputs = compr.code_size
       ngens.times do |i|
-        $ngen = i # allows for conditional debugger calls
+        $ngen = i # allows for conditional debugger calls `binding.pry if $ngen = n`
         puts Time.now
         puts "# Gen #{i+1}/#{ngens}"
         # it just makes more sense run first, even though at first gen the trainset is empty
@@ -228,6 +237,8 @@ module DNE
         update_opt  # if I have more centroids, I should update opt
 
         opt.train
+        # Note: data analysis is done by extracting statistics from logs using regexes.
+        # Just `puts` anything you'd like to track, and save log to file
         puts "Best fit so far: #{opt.best.first} -- " \
              "Fit mean: #{opt.last_fits.mean} -- " \
              "Fit stddev: #{opt.last_fits.stddev}\n" \
@@ -235,7 +246,7 @@ module DNE
              "Mu stddev: #{opt.mu.stddev} -- " \
              "Conv: #{opt.convergence}"
 
-        break if termination_criteria&.call(opt)
+        break if termination_criteria&.call(opt) # uhm currently unused
       end
     end
 
@@ -263,7 +274,8 @@ module DNE
       opt.instance_variable_set :@mu, hsh[:mu]
       opt.instance_variable_set :@sigma, hsh[:sigma]
       compr.instance_variable_set :@centrs, hsh[:centrs]
-      # what else needs to be done in order to be able to run `#show_ind`?
+      # Uhm haven't used that yet...
+      # what else needs to be done in order to be able to run `#show_ind` again?
       puts "Experiment data loaded from `#{fname}`"
       true
     end

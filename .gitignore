@@ -7,3 +7,4 @@
 sources.txt
 /stats/
 *.pyc
+/atari_*.bin

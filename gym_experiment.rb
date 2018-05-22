@@ -20,7 +20,7 @@ end
 require 'machine_learning_workbench'    # https://github.com/giuse/machine_learning_workbench/
 
 
-# Deep Neuroevolution
+# Deep Neuroevolution (we're getting there...)
 module DNE
   # Shorthands
   NES = WB::Optimizer::NaturalEvolutionStrategies
@@ -36,7 +36,7 @@ module DNE
 
     def initialize config
       @config = config
-      # TODO: I really don't like these lines below...
+      # TODO: I really don't like these lines below... please refactor
       @max_nsteps = config[:run][:max_nsteps]
       @max_ngens = config[:run][:max_ngens]
       @termination_criteria = config[:run][:termination_criteria]
@@ -49,7 +49,7 @@ module DNE
         real_fit = @fit_fn
         @fit_fn = -> (ind) { puts "pre_fit"; real_fit.call(ind).tap { puts "post_fit" } }
       end
-      pyimport :gym        # adds the OpenAI Gym environment to this class
+      pyimport :gym        # adds the OpenAI Gym environment to this class as `gym`
       puts "Initializing single env" if debug
       @single_env = init_env config[:env] # one put aside for easy access
       puts "Initializing network" if debug
@@ -71,6 +71,7 @@ module DNE
     end
 
     # Automatic, dynamic environment initialization
+    # need Array to behave somehow akin to Hash.new
     class ParallEnvs < Array
       attr_reader :init_fn, :config
       def initialize init_fn, config
@@ -105,7 +106,8 @@ module DNE
       # TODO: make a wrapper around the observation to avoid switch-when
       puts "  initializing env" if debug
 
-      # if type.match /gvgai/ # GVGAI Gym environment from NYU
+      ## NOTE: uncomment the following to work with the GVGAI Gym environment from NYU
+      # if type.match /gvgai/
       #   begin  # can't wait for Ruby 2.5 to simplify this to if/rescue/end
       #     puts "Loading GVGAI environment" if debug
       #     pyimport :gym_gvgai
@@ -116,6 +118,7 @@ module DNE
       #   end
       # end
 
+      # NOTE: uhm should move this to AtariWrapper now that we have it
       gym.make(type).tap do |env|
         # Collect info about the observation space
         obs = env.reset.tolist.to_a
@@ -127,7 +130,7 @@ module DNE
         raise "Unrecognized action space" if act_type.nil? || act_size.nil?
         env.define_singleton_method(:act_type) { act_type.downcase.to_sym }
         env.define_singleton_method(:act_size) { Integer(act_size) }
-        # TODO: continuous actions
+        # TODO: address continuous actions
         raise NotImplementedError, "Only 'Discrete' action types at the moment please" \
           unless env.act_type == :discrete
         puts "Space sizes: obs => #{env.obs_size}, act => #{env.act_size}" if debug
@@ -148,8 +151,8 @@ module DNE
     end
 
     # Initialize the optimizer
-    # @param type [Symbol] name the NES algorithm of choice
-    # @return an initialized NES instance
+    # @param type [Symbol] name the (NES atm) algorithm of choice
+    # @return an initialized instance
     def init_opt type:, **opt_opt
       @opt_type = type
       @opt_opt = opt_opt
@@ -165,18 +168,15 @@ module DNE
     end
 
     # Return an action for an observation
-    # @note this includes the non-banal sequence of converting the observation to network inputs,
-    #   activating the network, then interpreting the network output as the corresponding action
+    # @note convert the observation to network inputs, activatie the network,
+    # then interprete the network output as the corresponding action
     def action_for observation
-      # TODO: continuous actions
-      # raise NotImplementedError, "Only 'Discrete' action types at the moment please" \
-      #   unless single_env.act_type == :discrete
-      # We're checking this at gym_env creation, that's enough :)
+      # TODO: continuous actions (checked at `init_env`)
       input = observation.tolist.to_a
       # TODO: probably a function generator here would be notably more efficient
-      # TODO: the normalization range depends on the net's activation function
+      # TODO: the normalization range depends on the net's activation function!
       output = net.activate input
-      begin # Why do I get NaN output sometimes?
+      begin # NaN outputs are pretty good bug indicators
         action = output.max_index
       rescue ArgumentError, Parallel::UndumpableException
         puts "\n\nNaN NETWORK OUTPUT!"
@@ -189,16 +189,15 @@ module DNE
     # @param type the type of computation
     # @return [lambda] function that evaluates the fitness of a list of genotype
     # @note returned function has param genotypes [Array<gtype>] list of genotypes, return [Array<Numeric>] list of fitnesses for each genotype
-    # TODO: implement ntrials!!
     def gen_fit_fn type, ntrials: nil
       type ||= :parallel
       case type
       # SEQUENTIAL ON SINGLE ENVIRONMENT
-      # => useful to catch problems with parallel env spawning
+      # => to catch problems with `Parallel` env spawning
       when :sequential_single
         -> (genotypes) { genotypes.map &method(:fitness_one) }
       # SEQUENTIAL ON MULTIPLE ENVIRONMENTS
-      # => `Parallel` can make debugging hard, this switches it off
+      # => to catch problems in multiple env spawning avoiding `Parallel`
       when :sequential_multi
         -> (genotypes) do
           genotypes.zip(parall_envs).map do |genotype, env|
@@ -227,32 +226,32 @@ module DNE
     # @param genotype the individual to be evaluated
     # @param env the environment to use for the evaluation
     # @param render [bool] whether to render the evaluation on screen
-    # @param nsteps [Integer] how many interactions to run with the game. One interaction is one action choosing + enacting and `skip_frames` repetitions
+    # @param nsteps [Integer] how many interactions to run with the game.
+    #   One interaction is one action choosing + enacting and `skip_frames` repetitions/noops
     def fitness_one genotype, env: single_env, render: false, nsteps: max_nsteps
       puts "Evaluating one individual" if debug
       puts "  Loading weights in network" if debug
-      net.deep_reset
+      net.deep_reset # <= this becomes necessary as we change net struct during training
       net.load_weights genotype
       observation = env.reset
       env.render if render
       tot_reward = 0
       puts "  Running (max_nsteps: #{max_nsteps})" if debug
       nsteps.times do |i|
+
+
         # TODO: refactor based on `atari_ulerl`
-        selected_action, normobs, novelty = action_for observation
-        # observation, reward, done, info = env.step(selected_action).to_a
-        # skip_frames&.times { env.step 0 } # accelerate simulation
-
-
         raise "Update this from ulerl"
         # execute once, execute skip, unshift result, convert all
         # need to pass also some of the helper functions in this class
 
 
+        selected_action, normobs, novelty = action_for observation
+        # observation, reward, done, info = env.step(selected_action).to_a
         observations, rewards, dones, infos = skip_frames.times.map do
           SKIP_TYPE[skip_type].call(selected_action, env).to_a
         end.transpose
-        # NOTE: this blurs the observation. An alternative is to isolate what changes.
+        # NOTE: this below blurs the observation. An alternative is to isolate what changes.
         observation = observations.reduce(:+) / observations.size
         reward = rewards.reduce :+
         done = dones.any?
@@ -273,7 +272,6 @@ module DNE
         puts "Best fit so far: #{opt.best.first} -- " \
              "Avg fit: #{opt.last_fits.mean} -- " \
              "Conv: #{opt.convergence}"
-
         break if termination_criteria&.call(opt)
       end
     end

@@ -2,7 +2,7 @@ require 'forwardable'
 require 'machine_learning_workbench'
 
 module DNE
-  # Wrap a WB compressor for usage on observation in a UL-ERL + PyCall context
+  # Wrap a WB compressor for usage on observations in a UL-ERL + PyCall context
   class ObservationCompressor
 
     extend Forwardable
@@ -65,12 +65,12 @@ module DNE
       # training set, then the training should be just some sums! Super fast!
       # NOTE: if I go back to using centroid training at all...
 
-      # Let's ensure all images are normalized NArrays from here on
+      # NOTE: careful if you're using normalized centroids from here on
       compr.train train_set.map &method(:normalize)
       @train_set = []
     end
 
-    # TODO: should we move some of this in VQ? I think so...
+    # TODO: move most of this to VQ?
 
     # Show a centroid using ImageMagick
     def show_centroid idx, disp_size: [300,300]
@@ -89,6 +89,18 @@ module DNE
       nil
     ensure
       WB::Tools::Execution.kill_forks
+    end
+
+    # Save centroids to files using ImageMagick
+    def save_centroids to_save=ncentrs, disp_size: [700, 800]
+      require 'rmagick'
+      to_save = to_save.times unless to_save.kind_of? Enumerable
+      to_save.each do |idx|
+        img = WB::Tools::Imaging.narr_to_img centrs[idx, true], shape: downsampled_size.reverse
+        img.resize!(*disp_size, Magick::TriangleFilter,0.51) if disp_size
+        img.write "centr_#{idx}.pdf"
+      end
+      puts "#{to_save.size}/#{centrs.shape.first} centroids saved"
     end
 
     # Returns a hash of values to maintain from parallel execution
