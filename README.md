@@ -4,7 +4,7 @@ This project collects a set of neuroevolution experiments with/towards deep netw
 
 ## *Playing Atari with Six Neurons*
 
-The experiments for this paper are based on [this code](https://github.com/giuse/DNE/releases/tag/aamas2019).  
+The experiments for this paper are based on [this code](https://github.com/giuse/DNE/releases/tag/six_neurons).  
 The algorithms themselves are coded in the [`machine_learning_workbench` library](https://github.com/giuse/machine_learning_workbench), specifically using [version 0.8.0](https://github.com/giuse/machine_learning_workbench/releases/tag/0.8.0).
 
 
