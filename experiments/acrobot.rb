@@ -20,7 +20,7 @@ config = {
   }
 }
 
-exp = GymExperiment.new config
+exp = DNE::GymExperiment.new config
 exp.run
 puts "Re-running best individual "
 exp.show_best
