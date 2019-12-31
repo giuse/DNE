@@ -13,6 +13,12 @@ The algorithms themselves are coded in the [`machine_learning_workbench` library
 First make sure the OpenAI Gym is pip-installed on python3, [instructions here](https://github.com/openai/gym).  
 You will also need the [GVGAI_GYM](https://github.com/rubenrtorrado/GVGAI_GYM) to access GVGAI environments.
 
+Mac users will need to tell the numo-linalg library where BLAS is:
+
+    $ gem install numo-linalg -- --with-openblas-dir=/usr/local/opt/openblas
+
+(per @sonot's [gist](https://gist.github.com/sonots/6fadc6cbbb170b9c4a0c9396c91a88e1))
+
 Clone this repository, then execute:
 
     $ bundle install
